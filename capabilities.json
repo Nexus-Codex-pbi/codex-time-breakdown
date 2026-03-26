@@ -1,0 +1,115 @@
+{
+  "dataRoles": [
+    {
+      "name": "category",
+      "displayName": "Category",
+      "description": "Scenario label (e.g. 'Battery Not Available', 'Battery Sold')",
+      "kind": "Grouping"
+    },
+    {
+      "name": "segment1",
+      "displayName": "Segment 1",
+      "description": "First time segment measure (e.g. Avg Dispatch Time)",
+      "kind": "Measure"
+    },
+    {
+      "name": "segment2",
+      "displayName": "Segment 2",
+      "description": "Second time segment measure (e.g. Avg Travel Time)",
+      "kind": "Measure"
+    },
+    {
+      "name": "segment3",
+      "displayName": "Segment 3",
+      "description": "Third time segment measure (e.g. Avg At Scene Time)",
+      "kind": "Measure"
+    },
+    {
+      "name": "totalValue",
+      "displayName": "Total",
+      "description": "Total time measure — shown as end label",
+      "kind": "Measure"
+    }
+  ],
+  "dataViewMappings": [
+    {
+      "categorical": {
+        "categories": {
+          "select": [
+            { "for": { "in": "category" } }
+          ],
+          "dataReductionAlgorithm": { "top": { "count": 30 } }
+        },
+        "values": {
+          "select": [
+            { "for": { "in": "segment1" } },
+            { "for": { "in": "segment2" } },
+            { "for": { "in": "segment3" } },
+            { "for": { "in": "totalValue" } }
+          ]
+        }
+      }
+    }
+  ],
+  "objects": {
+    "timeBreakdownStyle": {
+      "properties": {
+        "barHeight": {
+          "type": { "numeric": true }
+        },
+        "barRadius": {
+          "type": { "numeric": true }
+        },
+        "rowSpacing": {
+          "type": { "numeric": true }
+        },
+        "segment1Color": {
+          "type": { "fill": { "solid": { "color": true } } }
+        },
+        "segment1Label": {
+          "type": { "text": true }
+        },
+        "segment2Color": {
+          "type": { "fill": { "solid": { "color": true } } }
+        },
+        "segment2Label": {
+          "type": { "text": true }
+        },
+        "segment3Color": {
+          "type": { "fill": { "solid": { "color": true } } }
+        },
+        "segment3Label": {
+          "type": { "text": true }
+        },
+        "totalColor": {
+          "type": { "fill": { "solid": { "color": true } } }
+        },
+        "showSegmentLabels": {
+          "type": { "bool": true }
+        },
+        "showTotalLabel": {
+          "type": { "bool": true }
+        },
+        "valueUnit": {
+          "type": { "text": true }
+        },
+        "showLegend": {
+          "type": { "bool": true }
+        },
+        "categoryFontSize": {
+          "type": { "numeric": true }
+        },
+        "valueFontSize": {
+          "type": { "numeric": true }
+        },
+        "segmentOpacity": {
+          "type": { "numeric": true }
+        },
+        "categoryColor": {
+          "type": { "fill": { "solid": { "color": true } } }
+        }
+      }
+    }
+  },
+  "privileges": []
+}

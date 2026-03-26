@@ -1,0 +1,21 @@
+{
+  "visual": {
+    "name": "optiStockTimeBreakdown",
+    "displayName": "OptiStock Time Breakdown Bar",
+    "guid": "optiStockTimeBreakdownA1B2C3D4E5F647A8B9C0D1E2F3A4B5C6",
+    "visualClassName": "Visual",
+    "version": "1.0.0.0",
+    "description": "Side-by-side horizontal stacked bar comparison showing time segments for different event outcomes.",
+    "supportUrl": "https://nexusai.nexus"
+  },
+  "apiVersion": "5.9.1",
+  "author": {
+    "name": "Neil Armstrong",
+    "email": "neil@nexusai.nexus"
+  },
+  "assets": {
+    "icon": "assets/icon.png"
+  },
+  "style": "style/visual.less",
+  "capabilities": "capabilities.json"
+}
