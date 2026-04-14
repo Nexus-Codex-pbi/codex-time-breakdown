@@ -29,6 +29,12 @@
       "displayName": "Total",
       "description": "Total time measure — shown as end label",
       "kind": "Measure"
+    },
+    {
+      "name": "sortOrder",
+      "displayName": "Sort Order",
+      "description": "Numeric sort order — rows sorted ascending by this value",
+      "kind": "Measure"
     }
   ],
   "dataViewMappings": [
@@ -45,7 +51,8 @@
             { "for": { "in": "segment1" } },
             { "for": { "in": "segment2" } },
             { "for": { "in": "segment3" } },
-            { "for": { "in": "totalValue" } }
+            { "for": { "in": "totalValue" } },
+            { "for": { "in": "sortOrder" } }
           ]
         }
       }
@@ -87,6 +94,9 @@
         "showSegmentLabels": {
           "type": { "bool": true }
         },
+        "showSegmentValues": {
+          "type": { "bool": true }
+        },
         "showTotalLabel": {
           "type": { "bool": true }
         },
@@ -109,6 +119,30 @@
           "type": { "fill": { "solid": { "color": true } } }
         }
       }
+    },
+    "axisSettings": {
+      "properties": {
+        "showAxisTitles": {
+          "type": { "bool": true }
+        },
+        "xAxisTitle": {
+          "type": { "text": true }
+        },
+        "yAxisTitle": {
+          "type": { "text": true }
+        }
+      }
+    }
+  },
+  "supportsHighlight": true,
+  "supportsKeyboardFocus": true,
+  "supportsLandingPage": true,
+  "supportsEmptyDataView": true,
+  "supportsMultiVisualSelection": true,
+  "tooltips": {
+    "supportedTypes": {
+      "default": true,
+      "canvas": true
     }
   },
   "privileges": []

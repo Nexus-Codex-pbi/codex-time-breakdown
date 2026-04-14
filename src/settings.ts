@@ -3,6 +3,8 @@ import FormattingSettingsCard = formattingSettings.SimpleCard;
 import FormattingSettingsSlice = formattingSettings.Slice;
 import FormattingSettingsModel = formattingSettings.Model;
 
+const ConstantOrRule = powerbi.VisualEnumerationInstanceKinds.ConstantOrRule;
+
 export class TimeBreakdownSettings extends FormattingSettingsCard {
     name = "timeBreakdownStyle";
     displayName = "Time Breakdown";
@@ -29,6 +31,7 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         name: "segment1Color",
         displayName: "Segment 1 colour",
         value: { value: "#e60e22" },
+        instanceKind: ConstantOrRule
     });
 
     segment1Label = new formattingSettings.TextInput({
@@ -42,6 +45,7 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         name: "segment2Color",
         displayName: "Segment 2 colour",
         value: { value: "#d4920a" },
+        instanceKind: ConstantOrRule
     });
 
     segment2Label = new formattingSettings.TextInput({
@@ -55,6 +59,7 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         name: "segment3Color",
         displayName: "Segment 3 colour",
         value: { value: "#73afd5" },
+        instanceKind: ConstantOrRule
     });
 
     segment3Label = new formattingSettings.TextInput({
@@ -68,11 +73,18 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         name: "totalColor",
         displayName: "Total colour",
         value: { value: "#130064" },
+        instanceKind: ConstantOrRule
     });
 
     showSegmentLabels = new formattingSettings.ToggleSwitch({
         name: "showSegmentLabels",
         displayName: "Show segment labels",
+        value: true,
+    });
+
+    showSegmentValues = new formattingSettings.ToggleSwitch({
+        name: "showSegmentValues",
+        displayName: "Show segment values",
         value: true,
     });
 
@@ -117,6 +129,7 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         name: "categoryColor",
         displayName: "Category label colour",
         value: { value: "#130064" },
+        instanceKind: ConstantOrRule
     });
 
     slices: FormattingSettingsSlice[] = [
@@ -131,6 +144,7 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         this.segment3Label,
         this.totalColor,
         this.showSegmentLabels,
+        this.showSegmentValues,
         this.showTotalLabel,
         this.valueUnit,
         this.showLegend,
@@ -141,7 +155,39 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
     ];
 }
 
+export class AxisSettingsCard extends formattingSettings.SimpleCard {
+    showAxisTitles = new formattingSettings.ToggleSwitch({
+        name: "showAxisTitles",
+        displayName: "Show Axis Titles",
+        description: "Display titles below X axis (time values) and beside Y axis (categories)",
+        value: false
+    });
+
+    xAxisTitle = new formattingSettings.TextInput({
+        name: "xAxisTitle",
+        displayName: "X Axis Title",
+        placeholder: "X axis title",
+        value: ""
+    });
+
+    yAxisTitle = new formattingSettings.TextInput({
+        name: "yAxisTitle",
+        displayName: "Y Axis Title",
+        placeholder: "Y axis title",
+        value: ""
+    });
+
+    name: string = "axisSettings";
+    displayName: string = "Axis Titles";
+    slices: FormattingSettingsSlice[] = [
+        this.showAxisTitles,
+        this.xAxisTitle,
+        this.yAxisTitle
+    ];
+}
+
 export class VisualFormattingSettingsModel extends FormattingSettingsModel {
     timeBreakdownCard = new TimeBreakdownSettings();
-    cards = [this.timeBreakdownCard];
+    axisSettingsCard = new AxisSettingsCard();
+    cards = [this.timeBreakdownCard, this.axisSettingsCard];
 }

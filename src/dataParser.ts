@@ -10,6 +10,7 @@ export interface TimeBreakdownRow {
     category: string;
     segments: SegmentData[];
     total: number | null;
+    sortOrder: number | null;
 }
 
 export interface TimeBreakdownData {
@@ -59,6 +60,13 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
             total = typeof raw === "number" ? raw : Number(raw) || null;
         }
 
+        // Sort order
+        let sortOrder: number | null = null;
+        if (roleMap["sortOrder"] !== undefined) {
+            const raw = vals[roleMap["sortOrder"]].values[r];
+            sortOrder = typeof raw === "number" ? raw : Number(raw) || null;
+        }
+
         const effectiveTotal = total ?? segmentSum;
         if (effectiveTotal > maxTotal) maxTotal = effectiveTotal;
 
@@ -66,6 +74,17 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
             category: String(cats[r] ?? ""),
             segments,
             total,
+            sortOrder,
+        });
+    }
+
+    // Sort by sortOrder ascending if any row has a sort order value
+    const hasSortOrder = rows.some(r => r.sortOrder !== null);
+    if (hasSortOrder) {
+        rows.sort((a, b) => {
+            const aVal = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+            const bVal = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+            return aVal - bVal;
         });
     }
 

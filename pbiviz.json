@@ -1,21 +1,22 @@
 {
   "visual": {
-    "name": "optiStockTimeBreakdown",
-    "displayName": "OptiStock Time Breakdown Bar",
-    "guid": "optiStockTimeBreakdownA1B2C3D4E5F647A8B9C0D1E2F3A4B5C6",
+    "name": "codexTimeBreakdown",
+    "displayName": "Codex Time Breakdown",
+    "guid": "codexTimeBreakdownA1B2C3D4E5F647A8B9C0D1E2F3A4B5C6",
     "visualClassName": "Visual",
     "version": "1.0.0.0",
     "description": "Side-by-side horizontal stacked bar comparison showing time segments for different event outcomes.",
-    "supportUrl": "https://nexusai.nexus"
+    "supportUrl": "https://nexuscodex.nexus/support"
   },
-  "apiVersion": "5.9.1",
+  "apiVersion": "5.10.0",
   "author": {
-    "name": "Neil Armstrong",
-    "email": "neil@nexusai.nexus"
+    "name": "Nexus Codex",
+    "email": "support@nexuscodex.nexus"
   },
   "assets": {
     "icon": "assets/icon.png"
   },
   "style": "style/visual.less",
-  "capabilities": "capabilities.json"
+  "capabilities": "capabilities.json",
+  "stringResources": ["stringResources/en-US/resources.resjson"]
 }
