@@ -22,6 +22,7 @@ import * as d3 from "d3";
 export class Visual implements IVisual {
     private host: IVisualHost;
     private target: HTMLElement;
+    private scrollContainer: d3.Selection<HTMLDivElement, unknown, null, undefined>;
     private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
     private container: d3.Selection<SVGGElement, unknown, null, undefined>;
     private formattingSettings: VisualFormattingSettingsModel;
@@ -46,7 +47,14 @@ export class Visual implements IVisual {
         this.localizationManager = this.host.createLocalizationManager();
         this.formattingSettingsService = new FormattingSettingsService();
 
-        this.svg = d3.select(options.element)
+        this.scrollContainer = d3.select(options.element)
+            .append("div")
+            .attr("class", "time-breakdown-scroll")
+            .style("width", "100%")
+            .style("height", "100%")
+            .style("overflow", "auto");
+
+        this.svg = this.scrollContainer
             .append("svg")
             .attr("class", "time-breakdown");
 
@@ -108,16 +116,19 @@ export class Visual implements IVisual {
 
             const w = options.viewport.width;
             const h = options.viewport.height;
-            this.svg.attr("width", w).attr("height", h);
+            // Set viewport size on scroll container; render will compute actual content size
+            this.scrollContainer.style("width", w + "px").style("height", h + "px");
 
-            this.render(data, w, h);
+            const contentH = this.render(data, w);
+            // Size SVG to actual content so scroll container shows scrollbars when needed
+            this.svg.attr("width", w).attr("height", contentH);
             this.events.renderingFinished(options);
         } catch (e) {
             this.events.renderingFailed(options, String(e));
         }
     }
 
-    private render(data: TimeBreakdownData, width: number, height: number): void {
+    private render(data: TimeBreakdownData, width: number): number {
         this.container.selectAll("*").remove();
 
         const s = this.formattingSettings.timeBreakdownCard;
@@ -356,6 +367,7 @@ export class Visual implements IVisual {
                 lx += 14 + bbox.width + 16;
             });
         }
+        return yOffset;
     }
 
     private contrastText(bgHex: string): string {
