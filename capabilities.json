@@ -27,13 +27,13 @@
     {
       "name": "totalValue",
       "displayName": "Total",
-      "description": "Total time measure — shown as end label",
+      "description": "Total time measure \u2014 shown as end label",
       "kind": "Measure"
     },
     {
       "name": "sortOrder",
       "displayName": "Sort Order",
-      "description": "Numeric sort order — rows sorted ascending by this value",
+      "description": "Numeric sort order \u2014 rows sorted ascending by this value",
       "kind": "Measure"
     }
   ],
@@ -42,17 +42,45 @@
       "categorical": {
         "categories": {
           "select": [
-            { "for": { "in": "category" } }
+            {
+              "for": {
+                "in": "category"
+              }
+            }
           ],
-          "dataReductionAlgorithm": { "top": { "count": 30 } }
+          "dataReductionAlgorithm": {
+            "top": {
+              "count": 30000
+            }
+          }
         },
         "values": {
           "select": [
-            { "for": { "in": "segment1" } },
-            { "for": { "in": "segment2" } },
-            { "for": { "in": "segment3" } },
-            { "for": { "in": "totalValue" } },
-            { "for": { "in": "sortOrder" } }
+            {
+              "for": {
+                "in": "segment1"
+              }
+            },
+            {
+              "for": {
+                "in": "segment2"
+              }
+            },
+            {
+              "for": {
+                "in": "segment3"
+              }
+            },
+            {
+              "for": {
+                "in": "totalValue"
+              }
+            },
+            {
+              "for": {
+                "in": "sortOrder"
+              }
+            }
           ]
         }
       }
@@ -62,76 +90,164 @@
     "timeBreakdownStyle": {
       "properties": {
         "barHeight": {
-          "type": { "numeric": true }
+          "type": {
+            "numeric": true
+          },
+          "displayName": "Bar Height"
         },
         "barRadius": {
-          "type": { "numeric": true }
+          "type": {
+            "numeric": true
+          },
+          "displayName": "Bar Radius"
         },
         "rowSpacing": {
-          "type": { "numeric": true }
+          "type": {
+            "numeric": true
+          },
+          "displayName": "Row Spacing"
         },
         "segment1Color": {
-          "type": { "fill": { "solid": { "color": true } } }
+          "type": {
+            "fill": {
+              "solid": {
+                "color": true
+              }
+            }
+          },
+          "displayName": "Segment1Color"
         },
         "segment1Label": {
-          "type": { "text": true }
+          "type": {
+            "text": true
+          },
+          "displayName": "Segment1Label"
         },
         "segment2Color": {
-          "type": { "fill": { "solid": { "color": true } } }
+          "type": {
+            "fill": {
+              "solid": {
+                "color": true
+              }
+            }
+          },
+          "displayName": "Segment2Color"
         },
         "segment2Label": {
-          "type": { "text": true }
+          "type": {
+            "text": true
+          },
+          "displayName": "Segment2Label"
         },
         "segment3Color": {
-          "type": { "fill": { "solid": { "color": true } } }
+          "type": {
+            "fill": {
+              "solid": {
+                "color": true
+              }
+            }
+          },
+          "displayName": "Segment3Color"
         },
         "segment3Label": {
-          "type": { "text": true }
+          "type": {
+            "text": true
+          },
+          "displayName": "Segment3Label"
         },
         "totalColor": {
-          "type": { "fill": { "solid": { "color": true } } }
+          "type": {
+            "fill": {
+              "solid": {
+                "color": true
+              }
+            }
+          },
+          "displayName": "Total Color"
         },
         "showSegmentLabels": {
-          "type": { "bool": true }
+          "type": {
+            "bool": true
+          },
+          "displayName": "Show Segment Labels"
         },
         "showSegmentValues": {
-          "type": { "bool": true }
+          "type": {
+            "bool": true
+          },
+          "displayName": "Show Segment Values"
         },
         "showTotalLabel": {
-          "type": { "bool": true }
+          "type": {
+            "bool": true
+          },
+          "displayName": "Show Total Label"
         },
         "valueUnit": {
-          "type": { "text": true }
+          "type": {
+            "text": true
+          },
+          "displayName": "Value Unit"
         },
         "showLegend": {
-          "type": { "bool": true }
+          "type": {
+            "bool": true
+          },
+          "displayName": "Show Legend"
         },
         "categoryFontSize": {
-          "type": { "numeric": true }
+          "type": {
+            "numeric": true
+          },
+          "displayName": "Category Font Size"
         },
         "valueFontSize": {
-          "type": { "numeric": true }
+          "type": {
+            "numeric": true
+          },
+          "displayName": "Value Font Size"
         },
         "segmentOpacity": {
-          "type": { "numeric": true }
+          "type": {
+            "numeric": true
+          },
+          "displayName": "Segment Opacity"
         },
         "categoryColor": {
-          "type": { "fill": { "solid": { "color": true } } }
+          "type": {
+            "fill": {
+              "solid": {
+                "color": true
+              }
+            }
+          },
+          "displayName": "Category Color"
         }
-      }
+      },
+      "displayName": "Time Breakdown Style"
     },
     "axisSettings": {
       "properties": {
         "showAxisTitles": {
-          "type": { "bool": true }
+          "type": {
+            "bool": true
+          },
+          "displayName": "Show Axis Titles"
         },
         "xAxisTitle": {
-          "type": { "text": true }
+          "type": {
+            "text": true
+          },
+          "displayName": "X Axis Title"
         },
         "yAxisTitle": {
-          "type": { "text": true }
+          "type": {
+            "text": true
+          },
+          "displayName": "Y Axis Title"
         }
-      }
+      },
+      "displayName": "Axis Settings"
     }
   },
   "supportsHighlight": true,

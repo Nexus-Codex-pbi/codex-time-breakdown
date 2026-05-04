@@ -1,7 +1,7 @@
 {
   "name": "visual",
   "description": "OptiStock Time Breakdown Bar",
-  "version": "1.0.0.0",
+  "version": "1.1.0.1",
   "license": "MIT",
   "scripts": {
     "pbiviz": "pbiviz",
@@ -13,7 +13,7 @@
     "@types/d3": "7.4.3",
     "d3": "7.9.0",
     "d3-selection": "^3.0.0",
-    "powerbi-visuals-api": "^5.10.0",
+    "powerbi-visuals-api": "5.11.0",
     "powerbi-visuals-utils-formattingmodel": "^6.0.4"
   },
   "devDependencies": {
