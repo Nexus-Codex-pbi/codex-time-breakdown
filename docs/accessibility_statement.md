@@ -1,47 +1,30 @@
-# Accessibility Statement for Codex Time Breakdown
+# Accessibility Statement – Codex Time Breakdown
 
-## Keyboard Navigation
-The Codex Time Breakdown visual supports full keyboard navigation. Users can tab through interactive elements including:
-- Each row in the breakdown visualization
-- All clickable areas that support cross-filtering
+## Overview
+This document outlines the accessibility compliance of the **Codex Time Breakdown** Power BI custom visual.
 
-Navigation follows standard tab order from top to bottom of the visual.
+## 1. Keyboard Navigation
+The visual supports keyboard navigation for all interactive elements. Focus indicators are visible and follow standard browser behaviour.
 
-## High Contrast Mode
-The visual fully supports Windows High Contrast mode. When enabled:
-- All text elements use appropriate high contrast colors
-- Background colors adapt to system-defined high contrast scheme
-- Visual elements maintain clear distinction and readability
-- Selection states are clearly visible with high contrast borders
+## 2. High Contrast Mode
+The visual supports Power BI high contrast themes. Text, borders, and backgrounds adapt automatically. No hard-coded colours that break accessibility.
 
-## Screen Reader Support
-The visual provides semantic structure compatible with screen readers:
-- Proper heading hierarchy for section titles
-- Descriptive labels for all interactive elements
-- Meaningful alternative text for visual elements
-- Logical reading order that matches visual layout
-- Dynamic content updates announced through ARIA live regions
+## 3. Screen Reader Support
+- ARIA labels are applied to interactive elements where applicable.
+- Non-decorative icons include accessible text.
+- UI controls expose meaningful names.
 
-## Color Usage
-All visual elements meet WCAG 2.1 AA contrast requirements:
-- Minimum 4.5:1 contrast ratio for normal text
-- Minimum 3:1 contrast ratio for large text
-- Color is never used as the sole means of conveying information
-- Alternative visual indicators accompany color-coded elements
+## 4. Color Usage
+- The visual does not rely solely on colour to convey meaning. The chart uses patterns and labels in addition to colour.
+- No flashing or strobing content.
 
-## Animations
-The visual uses minimal animations that do not cause issues for users with motion sensitivity:
-- Smooth transitions for enhanced usability
-- No flashing or rapidly changing elements
-- All animations can be disabled through browser or OS settings
-- Animation duration is kept to a minimum
+## 5. Animations
+- Animations are minimal and non-looping.
+- Respects `prefers-reduced-motion` where applicable.
+- No motion that could trigger vestibular issues.
 
-## Text Scaling
-The visual supports text scaling up to 200% of default size:
-- Layout adjusts responsively to accommodate larger text
-- No text truncation or overlap occurs when text is enlarged
-- All interactive elements remain usable at increased text sizes
-- Scroll containers adapt to content size changes
+## 6. Text Scaling
+The visual respects Power BI text scaling and browser zoom.
 
-## Summary
-The Codex Time Breakdown visual meets WCAG 2.1 AA accessibility guidelines. It provides comprehensive keyboard navigation, high contrast mode support, screen reader compatibility, appropriate color contrast, and responsive design that accommodates various accessibility needs. The visual follows established accessibility best practices for Power BI custom visuals.
+## 7. Summary
+**Codex Time Breakdown** meets Microsoft's accessibility requirements and is designed to be usable by all users, including those relying on assistive technologies.

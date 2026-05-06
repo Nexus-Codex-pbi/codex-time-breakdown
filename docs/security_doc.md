@@ -1,33 +1,46 @@
-# Security Statement for optiStockTimeBreakdown
+# Security Document – Codex Time Breakdown
 
-## External Network Access
-The visual does not make any external network calls. It contains no `externalJS` in the pbiviz.json and no `fetch`, `XMLHttpRequest`, or similar networking code in the source.
+## Overview
+This document describes the security characteristics of the **Codex Time Breakdown** Power BI custom visual. It confirms compliance with Microsoft's security and certification requirements.
 
-## Telemetry
-The visual does not collect or transmit any telemetry data. There are no calls to tracking services or custom telemetry logic.
+## 1. External Network Access
+**The visual does not make any external network calls.**
+- No HTTP/HTTPS requests
+- No WebSockets
+- No external APIs
+- No remote JSON, images, fonts, or scripts
 
-## Data Handling
-The visual only processes data provided via the Power BI dataView pipeline. It does not store, cache, or transmit any data outside the visual instance. All data is held in memory during the visual's lifetime and is released when the visual is destroyed.
+All resources are bundled within the `.pbiviz` package.
 
-## Script Safety
-- No use of `eval()` or similar dynamic code execution.
-- No use of `innerHTML`; all DOM updates are performed via SVG DOM API methods (`appendChild`, `setAttribute`, etc.) and D3.js, which are safe when used as in this visual.
-- All user-provided strings (from data or formatting properties) are treated as plain text and safely inserted into the DOM via `textContent` or equivalent safe methods.
+## 2. Telemetry and Data Collection
+**The visual does not collect, store, transmit, or log any user data.**
+- No telemetry
+- No analytics
+- No usage tracking
+- No cookies or local storage
 
-## Cross-Visual Interaction
-The visual supports cross-filtering and highlighting:
-- When a row is clicked, it emits a selection event via the `ISelectionManager` that filters other visuals on the report page by the category value of that row.
-- The visual also respects external filters applied by other visuals (filter-in) and updates its display accordingly.
-- The visual supports highlighting from other visuals (when they are selected) and will highlight the corresponding rows.
+## 3. Data Handling
+- The visual does not store data outside the Power BI sandbox.
+- The visual does not persist data to disk.
+- The visual does not send data to external systems.
+- All data stays within the Power BI host environment.
 
-## Dependencies
-The visual depends on the following approved Power BI libraries:
-- `powerbi-visuals-api`
-- `powerbi-visuals-utils-formattingmodel`
-Additionally, it uses D3.js (version 5.x) for SVG rendering, which is included as a dependency in the package.json and is bundled with the visual.
+## 4. Script and Code Safety
+- No use of `eval()`, `Function()`, or dynamic code execution.
+- No injection of external scripts or styles.
+- No DOM escape or manipulation outside the visual container.
 
-## Permissions
-The visual requires no special permissions beyond those granted to standard Power BI custom visuals. The `privileges` array in `capabilities.json` is empty.
+## 5. Cross-Visual Interaction
+- The visual communicates with other visuals only through official Power BI APIs (ISelectionManager).
+- No custom messaging or cross-iframe communication.
 
-## Summary
-optiStockTimeBreakdown is a secure Power BI custom visual that adheres to Microsoft's security and privacy requirements. It processes data locally, uses only approved APIs and safe DOM/SVG practices, and implements proper cross-visual interaction via the Power BI extensibility model.
+## 6. Dependencies
+- No external libraries loaded at runtime.
+- All JS/CSS/SVG assets bundled locally.
+- No external fonts.
+
+## 7. Permissions
+The visual does not request elevated permissions.
+
+## 8. Summary
+**Codex Time Breakdown** is sandbox-compliant, contains no external dependencies, performs no external communication, and adheres to all Microsoft Power BI security requirements.

@@ -1,82 +1,70 @@
-# User Guide for Codex Time Breakdown
+# User Guide – Codex Time Breakdown
 
-## Adding the Visual
-1. Open Power BI Desktop or Power BI Service
-2. Navigate to the Visualizations pane
-3. Select the Codex Time Breakdown visual from the visual gallery
-4. Drag and drop the visual onto your report canvas
+## Overview
+Side-by-side horizontal stacked bar comparison showing time segments for different event outcomes. Each row represents a scenario (e.g., 'Battery Not Available', 'Battery Sold') and shows the breakdown of time into segments (e.g., dispatch, travel, at-scene) with a total.
 
-## Data Binding
+## 1. Adding the Visual
+1. Import the `.pbiviz` file into Power BI Desktop
+2. Locate the visual in the Visualizations pane
+3. Drag it onto the report canvas
 
-### Required Fields
-- **Category**: Scenario label (e.g. 'Battery Not Available', 'Battery Sold')
-  - Data Type: Text/String
-  - Purpose: Identifies each row in the breakdown visualization
+## 2. Data Binding
+- **Category** (Required): Scenario label (e.g. 'Battery Not Available', 'Battery Sold'). Each unique value creates a row.
+- **Segment 1** (Required): First time segment measure (e.g. Avg Dispatch Time).
+- **Segment 2** (Required): Second time segment measure (e.g. Avg Travel Time).
+- **Segment 3** (Required): Third time segment measure (e.g. Avg At Scene Time).
+- **Total** (Optional): Total time measure — shown as end label. If not bound, the total is calculated as the sum of the three segments.
+- **Sort Order** (Optional): Numeric sort order — rows sorted ascending by this value.
 
-- **Segment 1**: First time segment measure (e.g. Avg Dispatch Time)
-  - Data Type: Numeric
-  - Purpose: Represents the first portion of the time breakdown
+## 3. Formatting Options
+**Time Breakdown Style**
+- Bar Height: Height of each segment bar (px).
+- Bar Radius: Corner radius of the segment bars (px).
+- Row Spacing: Vertical space between rows (px).
+- Segment 1 Color: Colour for the first segment.
+- Segment 1 Label: Label for the first segment (e.g., 'Dispatch').
+- Segment 2 Color: Colour for the second segment.
+- Segment 2 Label: Label for the second segment (e.g., 'Travel').
+- Segment 3 Color: Colour for the third segment.
+- Segment 3 Label: Label for the third segment (e.g., 'At Scene').
+- Total Color: Colour for the total label.
+- Show Segment Labels: Toggle display of segment labels inside the bars.
+- Show Segment Values: Toggle display of segment values inside the bars.
+- Show Total Label: Toggle display of the total label at the end of each bar.
+- Value Unit: Unit to display after values (e.g., 'min', 'sec').
+- Show Legend: Toggle visibility of the colour legend.
+- Category Font Size: Size of the scenario label text.
+- Value Font Size: Size of the segment and total values.
+- Segment Opacity: Opacity of the segment fills (0-100).
+- Category Color: Colour of the scenario label text.
 
-- **Segment 2**: Second time segment measure (e.g. Avg Travel Time)
-  - Data Type: Numeric
-  - Purpose: Represents the second portion of the time breakdown
+**Axis Settings**
+- Show Axis Titles: Toggle visibility of axis titles.
+- X Axis Title: Title for the time axis (e.g., 'Time (minutes)').
+- Y Axis Title: Title for the scenario axis (typically not used, as categories are on the left).
 
-- **Segment 3**: Third time segment measure (e.g. Avg At Scene Time)
-  - Data Type: Numeric
-  - Purpose: Represents the third portion of the time breakdown
+## 4. Features
+- Horizontal stacked bars showing time segments for each scenario.
+- Each segment is colour-coded and labelled.
+- Total time shown at the end of each bar.
+- Tooltips on hover showing scenario, each segment value, and total.
+- Click a row to cross-filter other visuals by that scenario (if Category bound).
+- Right-click for context menu.
+- Supports high contrast mode and keyboard navigation.
+- Configurable bar height, radius, spacing, and colours.
+- Optional display of segment labels and values inside bars.
+- Optional total label.
+- Value unit suffix (e.g., 'min').
+- Legend showing segment colours and labels.
+- Sorting by Sort Order field (ascending).
 
-- **Total**: Total time measure — shown as end label
-  - Data Type: Numeric
-  - Purpose: Displays the overall total time value
+## 5. Limitations
+- Only the first 30,000 rows are processed (data reduction limit).
+- Requires Category and at least one Segment to be bound; missing segments are treated as zero.
+- Segment measures must be numeric; non-numeric values are treated as zero.
+- If Total is bound, it must be numeric; otherwise, the total is the sum of the three segments.
+- The visual does not support drill-through or hierarchical categories.
+- Sort Order must be numeric; non-numeric values are placed at the end.
 
-### Optional Fields
-- **Sort Order**: Numeric sort order — rows sorted ascending by this value
-  - Data Type: Numeric
-  - Purpose: Controls the display order of rows in the visualization
-
-## Formatting Options
-
-### Time Breakdown Style Settings
-- **Bar Height**: Adjust the height of the horizontal bars
-- **Bar Radius**: Control the corner rounding of bars
-- **Row Spacing**: Set spacing between rows
-- **Segment Colors**: Customize colors for each of the three segments
-- **Segment Labels**: Set custom labels for each segment
-- **Total Color**: Set color for total value display
-- **Show Segment Labels**: Toggle display of segment labels on bars
-- **Show Segment Values**: Toggle display of segment values on bars
-- **Show Total Label**: Toggle display of total values at end of bars
-- **Value Unit**: Add unit suffix to all numeric values (e.g., "min", "hrs")
-- **Show Legend**: Toggle display of segment legend
-- **Category Font Size**: Adjust font size for category labels
-- **Value Font Size**: Adjust font size for value labels
-- **Segment Opacity**: Control transparency of segment bars
-- **Category Color**: Set color for category text
-
-### Axis Settings
-- **Show Axis Titles**: Toggle display of axis titles
-- **X Axis Title**: Set label for horizontal axis
-- **Y Axis Title**: Set label for vertical axis
-
-## Features
-1. **Horizontal Stacked Bar Visualization**: Compare time segments side-by-side
-2. **Customizable Segments**: Configure up to three time segments with custom labels
-3. **Interactive Tooltips**: Hover over any element to see detailed information
-4. **Cross-Filtering**: Click on rows to filter other visuals on the report page
-5. **Responsive Design**: Adapts to different screen sizes and resolutions
-6. **Scrollable Content**: Automatically adds scrollbars for large datasets
-7. **Customizable Appearance**: Extensive formatting options for colors, fonts, and layout
-8. **Legend Support**: Optional legend for identifying segment meanings
-
-## Limitations
-- Maximum of 30,000 data points supported due to Power BI data reduction limits
-- Requires numeric measures for all segment values
-- Limited to three segments per category
-- Some advanced formatting options require Power BI Premium features
-
-## Known Issues
-None reported at this time.
-
-## Support
-For support, please visit: https://nexuscodex.nexus/support
-GitHub repository: https://github.com/Nexus-Codex-pbi/codex-time-breakdown
+## 6. Support
+For help or questions, visit https://nexuscodex.nexus/support
