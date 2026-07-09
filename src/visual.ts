@@ -14,8 +14,11 @@ import ILocalizationManager = powerbi.extensibility.ILocalizationManager;
 import DataView = powerbi.DataView;
 
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
+import { dataViewWildcard } from "powerbi-visuals-utils-dataviewutils";
+import { ColorHelper } from "powerbi-visuals-utils-colorutils";
 import { VisualFormattingSettingsModel, TimeBreakdownSettings, AxisSettingsCard } from "./settings";
 import { parseDataView, TimeBreakdownData, TimeBreakdownRow } from "./dataParser";
+import { toRgba } from "../../_shared/formatting/colorHelpers";
 
 import * as d3 from "d3";
 
@@ -24,6 +27,7 @@ export class Visual implements IVisual {
     private target: HTMLElement;
     private scrollContainer: d3.Selection<HTMLDivElement, unknown, null, undefined>;
     private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
+    private backgroundRect: d3.Selection<SVGRectElement, unknown, null, undefined>;
     private container: d3.Selection<SVGGElement, unknown, null, undefined>;
     private formattingSettings: VisualFormattingSettingsModel;
     private formattingSettingsService: FormattingSettingsService;
@@ -37,6 +41,8 @@ export class Visual implements IVisual {
 
     // State for tooltips and cross-filtering
     private rowSelectionIds: ISelectionId[] = [];
+    private categoricalCategories: powerbi.DataViewCategoryColumn | undefined;
+    private totalColorHelper: ColorHelper | null = null;
 
     constructor(options: VisualConstructorOptions) {
         this.host = options.host;
@@ -57,6 +63,11 @@ export class Visual implements IVisual {
         this.svg = this.scrollContainer
             .append("svg")
             .attr("class", "time-breakdown");
+
+        // Dedicated background layer (D-05) — persistent SVG rect, first
+        // child so it never paints over row/legend content. Never whole-
+        // root/target opacity.
+        this.backgroundRect = this.svg.append("rect").attr("class", "time-breakdown-bg");
 
         this.container = this.svg.append("g");
 
@@ -86,6 +97,7 @@ export class Visual implements IVisual {
             const dv: DataView = options.dataViews?.[0];
             if (!dv) {
                 this.container.selectAll("*").remove();
+                this.backgroundRect.attr("width", 0).attr("height", 0);
                 this.events.renderingFinished(options);
                 return;
             }
@@ -96,6 +108,7 @@ export class Visual implements IVisual {
             const data = parseDataView(dv);
             if (!data || data.rows.length === 0) {
                 this.container.selectAll("*").remove();
+                this.backgroundRect.attr("width", 0).attr("height", 0);
                 this.rowSelectionIds = [];
                 this.events.renderingFinished(options);
                 return;
@@ -103,6 +116,7 @@ export class Visual implements IVisual {
 
             // Build selection IDs per row
             const categories = dv.categorical?.categories?.[0];
+            this.categoricalCategories = categories;
             this.rowSelectionIds = [];
             if (categories) {
                 for (let i = 0; i < categories.values.length; i++) {
@@ -114,6 +128,28 @@ export class Visual implements IVisual {
                 }
             }
 
+            // ─── Conditional formatting (fx) wiring — Total Colour
+            // (TRANS-04). A bare `instanceKind: ConstantOrRule` in
+            // settings.ts does not make the fx button functional on its own
+            // — it also needs a `selector` (dataViewWildcard, so a rule can
+            // match this measure's category instances/totals) and an
+            // `altConstantSelector` bound to a concrete selectionId for the
+            // "set for all" swatch edit path. Resolved per-row at render via
+            // ColorHelper.getColorForMeasure against each category's own
+            // per-instance object overrides (categoricalCategories.objects[rowIndex]).
+            const s = this.formattingSettings.timeBreakdownCard;
+            s.totalColor.selector = dataViewWildcard.createDataViewWildcardSelector(
+                dataViewWildcard.DataViewWildcardMatchingOption.InstancesAndTotals
+            );
+            s.totalColor.altConstantSelector = this.rowSelectionIds[0]
+                ? this.rowSelectionIds[0].getSelector()
+                : undefined;
+            this.totalColorHelper = new ColorHelper(
+                this.host.colorPalette,
+                { objectName: "timeBreakdownStyle", propertyName: "totalColor" },
+                s.totalColor.value.value
+            );
+
             const w = options.viewport.width;
             const h = options.viewport.height;
             // Set viewport size on scroll container; render will compute actual content size
@@ -122,6 +158,24 @@ export class Visual implements IVisual {
             const contentH = this.render(data, w);
             // Size SVG to actual content so scroll container shows scrollbars when needed
             this.svg.attr("width", w).attr("height", contentH);
+
+            // ─── Dedicated background layer (D-05) ─────────────────────
+            // Suite-wide shared Background card (Colour + Transparency,
+            // sourced from _shared/formatting/), painted as a persistent
+            // SVG rect (first child, behind `this.container`) — never
+            // whole-root/target opacity. Its transparency default is
+            // overridden to 100 in settings.ts specifically so an OLD saved
+            // report (this property never previously existed) renders
+            // alpha 0 — pixel-identical to painting nothing (D-06) — while
+            // still exposing a real, working Colour + Transparency control.
+            const background = this.formattingSettings.background;
+            const bgHex = background.backgroundColor.value?.value ?? "#ffffff";
+            const bgTransparencyPct = background.transparency.value ?? 100;
+            this.backgroundRect
+                .attr("width", w)
+                .attr("height", contentH)
+                .attr("fill", this.isHighContrast ? "none" : toRgba(bgHex, bgTransparencyPct));
+
             this.events.renderingFinished(options);
         } catch (e) {
             this.events.renderingFailed(options, String(e));
@@ -140,7 +194,7 @@ export class Visual implements IVisual {
         const catFontSize = s.categoryFontSize.value;
         const valFontSize = s.valueFontSize.value;
         const catColor = this.isHighContrast ? this.highContrastForeground : s.categoryColor.value.value;
-        const totalColor = this.isHighContrast ? this.highContrastForeground : s.totalColor.value.value;
+        const totalColorDefault = s.totalColor.value.value;
 
         const segmentConfigs = this.isHighContrast
             ? [
@@ -165,9 +219,18 @@ export class Visual implements IVisual {
         let yOffset = margin.top;
 
         // Rows
-        data.rows.forEach((row: TimeBreakdownRow) => {
+        data.rows.forEach((row: TimeBreakdownRow, rowIndex: number) => {
             const rowG = this.container.append("g")
                 .attr("transform", `translate(${margin.left}, ${yOffset})`);
+
+            // Per-row Total Colour resolution (TRANS-04 fx): reads the
+            // rule-evaluated fill (if a rule is set) via the official
+            // ColorHelper.getColorForMeasure path against this row's own
+            // per-instance object overrides, falling back to the static
+            // format-pane value otherwise.
+            const instanceObjects = this.categoricalCategories?.objects?.[rowIndex];
+            const resolvedTotalColor = this.totalColorHelper?.getColorForMeasure(instanceObjects, "totalColor") ?? totalColorDefault;
+            const totalColor = this.isHighContrast ? this.highContrastForeground : resolvedTotalColor;
 
             // Category label
             rowG.append("text")
@@ -259,7 +322,6 @@ export class Visual implements IVisual {
                 .attr("fill", "transparent")
                 .style("cursor", "pointer");
 
-            const rowIndex = data.rows.indexOf(row);
             const tooltipItems: VisualTooltipDataItem[] = [
                 { displayName: "Category", value: row.category }
             ];
