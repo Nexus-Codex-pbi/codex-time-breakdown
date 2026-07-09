@@ -16,7 +16,7 @@ import DataView = powerbi.DataView;
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 import { dataViewWildcard } from "powerbi-visuals-utils-dataviewutils";
 import { ColorHelper } from "powerbi-visuals-utils-colorutils";
-import { VisualFormattingSettingsModel, TimeBreakdownSettings, AxisSettingsCard } from "./settings";
+import { VisualFormattingSettingsModel, TimeBreakdownSettings, AxisSettingsCard, textAlignFor } from "./settings";
 import { parseDataView, TimeBreakdownData, TimeBreakdownRow } from "./dataParser";
 import { toRgba } from "../../_shared/formatting/colorHelpers";
 
@@ -28,6 +28,7 @@ export class Visual implements IVisual {
     private scrollContainer: d3.Selection<HTMLDivElement, unknown, null, undefined>;
     private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
     private backgroundRect: d3.Selection<SVGRectElement, unknown, null, undefined>;
+    private titleEl: d3.Selection<SVGTextElement, unknown, null, undefined>;
     private container: d3.Selection<SVGGElement, unknown, null, undefined>;
     private formattingSettings: VisualFormattingSettingsModel;
     private formattingSettingsService: FormattingSettingsService;
@@ -43,6 +44,8 @@ export class Visual implements IVisual {
     private rowSelectionIds: ISelectionId[] = [];
     private categoricalCategories: powerbi.DataViewCategoryColumn | undefined;
     private totalColorHelper: ColorHelper | null = null;
+    // Conditional formatting (fx) state — Category label colour (TEXT-02).
+    private categoryColorHelper: ColorHelper | null = null;
 
     constructor(options: VisualConstructorOptions) {
         this.host = options.host;
@@ -68,6 +71,10 @@ export class Visual implements IVisual {
         // child so it never paints over row/legend content. Never whole-
         // root/target opacity.
         this.backgroundRect = this.svg.append("rect").attr("class", "time-breakdown-bg");
+
+        // Iframe-internal title (Policy 1180.2.5) — persistent SVG text,
+        // shown/hidden per update() via showTitle/titleText (D-14).
+        this.titleEl = this.svg.append("text").attr("class", "time-breakdown-title");
 
         this.container = this.svg.append("g");
 
@@ -150,6 +157,23 @@ export class Visual implements IVisual {
                 s.totalColor.value.value
             );
 
+            // ─── Conditional formatting (fx) wiring — Category Label
+            // Colour (TEXT-02). Same wildcard-selector + altConstantSelector
+            // + ColorHelper.getColorForMeasure pattern as Total Colour
+            // above, resolved per-row against each category's own
+            // per-instance object overrides.
+            s.categoryColor.selector = dataViewWildcard.createDataViewWildcardSelector(
+                dataViewWildcard.DataViewWildcardMatchingOption.InstancesAndTotals
+            );
+            s.categoryColor.altConstantSelector = this.rowSelectionIds[0]
+                ? this.rowSelectionIds[0].getSelector()
+                : undefined;
+            this.categoryColorHelper = new ColorHelper(
+                this.host.colorPalette,
+                { objectName: "timeBreakdownStyle", propertyName: "categoryColor" },
+                s.categoryColor.value.value
+            );
+
             const w = options.viewport.width;
             const h = options.viewport.height;
             // Set viewport size on scroll container; render will compute actual content size
@@ -193,8 +217,34 @@ export class Visual implements IVisual {
         const unit = s.valueUnit.value || "";
         const catFontSize = s.categoryFontSize.value;
         const valFontSize = s.valueFontSize.value;
-        const catColor = this.isHighContrast ? this.highContrastForeground : s.categoryColor.value.value;
         const totalColorDefault = s.totalColor.value.value;
+
+        // ─── Text treatment (font family/weight/style/decoration,
+        // TEXT-01/TEXT-02) — each `?? default` fallback reproduces this
+        // visual's PRE-EXISTING hardcoded style exactly when an old saved
+        // report has none of these new properties set (D-06):
+        //   category: was hardcoded font-weight 600 -> categoryBold defaults false
+        //   segment label/value: was hardcoded 500   -> valueBold defaults false
+        //   total: was hardcoded 700                 -> totalBold defaults true
+        // "Bold" renders 700; "not bold" renders each surface's own
+        // pre-existing rest-weight, not a flat 400.
+        const weightFor = (bold: boolean | undefined, restWeight: string): string => bold ? "700" : restWeight;
+
+        const catFontFamily = s.categoryFontFamily.value || "Segoe UI, sans-serif";
+        const catWeight = weightFor(s.categoryBold.value, "600");
+        const catStyle = s.categoryItalic.value ? "italic" : "normal";
+        const catDecoration = s.categoryUnderline.value ? "underline" : "none";
+
+        const valFontFamily = s.valueFontFamily.value || "Segoe UI, sans-serif";
+        const valWeight = weightFor(s.valueBold.value, "500");
+        const valStyle = s.valueItalic.value ? "italic" : "normal";
+        const valDecoration = s.valueUnderline.value ? "underline" : "none";
+
+        const totalFontSize = s.totalFontSize.value;
+        const totalFontFamily = s.totalFontFamily.value || "Segoe UI, sans-serif";
+        const totalWeight = weightFor(s.totalBold.value, "700");
+        const totalStyle = s.totalItalic.value ? "italic" : "normal";
+        const totalDecoration = s.totalUnderline.value ? "underline" : "none";
 
         const segmentConfigs = this.isHighContrast
             ? [
@@ -208,10 +258,38 @@ export class Visual implements IVisual {
                 { color: s.segment3Color.value.value, label: s.segment3Label.value },
             ];
 
+        // ─── Visual Title (iframe-internal, Policy 1180.2.5) ───────────
+        // Reserves vertical space above the rows when shown; shares
+        // margin.top with the pre-existing 8px breathing room.
+        const titleFmt = this.formattingSettings.titleSettings;
+        const showTitle = !!titleFmt.showTitle.value && !!titleFmt.titleText.value;
+        const titleFontSize = titleFmt.titleFontSize.value || 14;
+        const titleH = showTitle ? titleFontSize + 12 : 0;
+
         // Layout
-        const margin = { top: 8, right: 60, bottom: 30, left: 12 };
+        const margin = { top: 8 + titleH, right: 60, bottom: 30, left: 12 };
         const trackWidth = width - margin.left - margin.right;
         const maxTotal = data.maxTotal || 1;
+
+        if (showTitle) {
+            const tAlign = textAlignFor(String((titleFmt as any).titleAlign?.value || "left"));
+            const x = tAlign === "center" ? width / 2 : tAlign === "right" ? width - margin.left : margin.left;
+            const anchor = tAlign === "center" ? "middle" : tAlign === "right" ? "end" : "start";
+            this.titleEl
+                .attr("x", x)
+                .attr("y", titleFontSize + 4)
+                .attr("text-anchor", anchor)
+                .style("font-family", titleFmt.titleFontFamily.value || "Segoe UI, sans-serif")
+                .style("font-size", `${titleFontSize}px`)
+                .style("font-weight", titleFmt.titleBold.value ? "700" : "400")
+                .style("font-style", titleFmt.titleItalic.value ? "italic" : "normal")
+                .style("text-decoration", titleFmt.titleUnderline.value ? "underline" : "none")
+                .style("fill", this.isHighContrast ? this.highContrastForeground : titleFmt.titleColor.value.value)
+                .text(String(titleFmt.titleText.value))
+                .style("display", null);
+        } else {
+            this.titleEl.style("display", "none");
+        }
 
         // Legend height
         const legendH = s.showLegend.value ? 24 : 0;
@@ -232,14 +310,21 @@ export class Visual implements IVisual {
             const resolvedTotalColor = this.totalColorHelper?.getColorForMeasure(instanceObjects, "totalColor") ?? totalColorDefault;
             const totalColor = this.isHighContrast ? this.highContrastForeground : resolvedTotalColor;
 
+            // Per-row Category Label Colour resolution (TEXT-02 fx): same
+            // pattern as Total Colour above.
+            const resolvedCategoryColor = this.categoryColorHelper?.getColorForMeasure(instanceObjects, "categoryColor") ?? s.categoryColor.value.value;
+            const catColor = this.isHighContrast ? this.highContrastForeground : resolvedCategoryColor;
+
             // Category label
             rowG.append("text")
                 .attr("x", 0)
                 .attr("y", 0)
                 .attr("dy", "0.9em")
                 .attr("font-size", `${catFontSize}px`)
-                .attr("font-family", "Segoe UI, sans-serif")
-                .attr("font-weight", "600")
+                .attr("font-family", catFontFamily)
+                .style("font-weight", catWeight)
+                .style("font-style", catStyle)
+                .style("text-decoration", catDecoration)
                 .attr("fill", catColor)
                 .text(row.category);
 
@@ -276,8 +361,10 @@ export class Visual implements IVisual {
                         .attr("dy", "0.35em")
                         .attr("text-anchor", "middle")
                         .attr("font-size", `${valFontSize}px`)
-                        .attr("font-family", "Segoe UI, sans-serif")
-                        .attr("font-weight", "500")
+                        .attr("font-family", valFontFamily)
+                        .style("font-weight", valWeight)
+                        .style("font-style", valStyle)
+                        .style("text-decoration", valDecoration)
                         .attr("fill", this.contrastText(cfg.color))
                         .text(labelText);
                 } else if ((showLabel || showValue) && segW > 0) {
@@ -291,7 +378,10 @@ export class Visual implements IVisual {
                         .attr("y", barY - 2)
                         .attr("text-anchor", "middle")
                         .attr("font-size", `${valFontSize - 1}px`)
-                        .attr("font-family", "Segoe UI, sans-serif")
+                        .attr("font-family", valFontFamily)
+                        .style("font-weight", valWeight)
+                        .style("font-style", valStyle)
+                        .style("text-decoration", valDecoration)
                         .attr("fill", cfg.color)
                         .text(labelText);
                 }
@@ -306,9 +396,11 @@ export class Visual implements IVisual {
                     .attr("x", xPos + 8)
                     .attr("y", barY + barHeight / 2)
                     .attr("dy", "0.35em")
-                    .attr("font-size", `${catFontSize}px`)
-                    .attr("font-family", "Segoe UI, sans-serif")
-                    .attr("font-weight", "700")
+                    .attr("font-size", `${totalFontSize}px`)
+                    .attr("font-family", totalFontFamily)
+                    .style("font-weight", totalWeight)
+                    .style("font-style", totalStyle)
+                    .style("text-decoration", totalDecoration)
                     .attr("fill", totalColor)
                     .text(`${Math.round(totalVal)} ${unit}`);
             }
@@ -364,7 +456,11 @@ export class Visual implements IVisual {
         const yAxisTitle = axisS.yAxisTitle.value || "";
         if (showAxisTitles) {
             const axisTitleFontSize = catFontSize;
-            const titleColor = this.isHighContrast ? this.highContrastForeground : catColor;
+            // Axis titles are out of this plan's per-surface text-treatment
+            // scope (interfaces limit this task to category/segment/total
+            // labels) — kept on the static Category Label Colour swatch,
+            // unchanged from pre-plan behaviour.
+            const titleColor = this.isHighContrast ? this.highContrastForeground : s.categoryColor.value.value;
             if (xAxisTitle) {
                 this.container.append("text")
                     .classed("axis-title x-axis-title", true)
@@ -416,13 +512,15 @@ export class Visual implements IVisual {
                     .attr("fill", cfg.color)
                     .attr("opacity", opacity);
 
+                // Legend swatches are out of this plan's per-surface scope —
+                // kept on the static Category Label Colour swatch, unchanged.
                 const label = legendG.append("text")
                     .attr("x", lx + 14)
                     .attr("y", 5)
                     .attr("dy", "0.35em")
                     .attr("font-size", "10px")
                     .attr("font-family", "Segoe UI, sans-serif")
-                    .attr("fill", catColor)
+                    .attr("fill", this.isHighContrast ? this.highContrastForeground : s.categoryColor.value.value)
                     .text(cfg.label);
 
                 const bbox = (label.node() as SVGTextElement).getBBox();

@@ -195,17 +195,69 @@
           },
           "displayName": "Show Legend"
         },
+        "categoryFontFamily": {
+          "type": { "formatting": { "fontFamily": true } },
+          "displayName": "Category Font Family"
+        },
         "categoryFontSize": {
           "type": {
             "numeric": true
           },
           "displayName": "Category Font Size"
         },
+        "categoryBold": {
+          "type": { "bool": true },
+          "displayName": "Category Bold"
+        },
+        "categoryItalic": {
+          "type": { "bool": true },
+          "displayName": "Category Italic"
+        },
+        "categoryUnderline": {
+          "type": { "bool": true },
+          "displayName": "Category Underline"
+        },
+        "valueFontFamily": {
+          "type": { "formatting": { "fontFamily": true } },
+          "displayName": "Value Font Family"
+        },
         "valueFontSize": {
           "type": {
             "numeric": true
           },
           "displayName": "Value Font Size"
+        },
+        "valueBold": {
+          "type": { "bool": true },
+          "displayName": "Value Bold"
+        },
+        "valueItalic": {
+          "type": { "bool": true },
+          "displayName": "Value Italic"
+        },
+        "valueUnderline": {
+          "type": { "bool": true },
+          "displayName": "Value Underline"
+        },
+        "totalFontFamily": {
+          "type": { "formatting": { "fontFamily": true } },
+          "displayName": "Total Font Family"
+        },
+        "totalFontSize": {
+          "type": { "numeric": true },
+          "displayName": "Total Font Size"
+        },
+        "totalBold": {
+          "type": { "bool": true },
+          "displayName": "Total Bold"
+        },
+        "totalItalic": {
+          "type": { "bool": true },
+          "displayName": "Total Italic"
+        },
+        "totalUnderline": {
+          "type": { "bool": true },
+          "displayName": "Total Underline"
         },
         "segmentOpacity": {
           "type": {
@@ -266,6 +318,75 @@
           "displayName": "Transparency",
           "type": {
             "numeric": true
+          }
+        }
+      }
+    },
+    "titleSettings": {
+      "displayName": "Visual Title",
+      "properties": {
+        "showTitle": {
+          "displayName": "Show Title",
+          "type": {
+            "bool": true
+          }
+        },
+        "titleText": {
+          "displayName": "Title Text",
+          "type": {
+            "text": true
+          }
+        },
+        "titleFontFamily": {
+          "displayName": "Font Family",
+          "type": {
+            "formatting": {
+              "fontFamily": true
+            }
+          }
+        },
+        "titleFontSize": {
+          "displayName": "Font Size",
+          "type": {
+            "formatting": {
+              "fontSize": true
+            }
+          }
+        },
+        "titleBold": {
+          "displayName": "Bold",
+          "type": {
+            "bool": true
+          }
+        },
+        "titleItalic": {
+          "displayName": "Italic",
+          "type": {
+            "bool": true
+          }
+        },
+        "titleUnderline": {
+          "displayName": "Underline",
+          "type": {
+            "bool": true
+          }
+        },
+        "titleAlign": {
+          "displayName": "Alignment",
+          "type": {
+            "formatting": {
+              "alignment": true
+            }
+          }
+        },
+        "titleColor": {
+          "displayName": "Font Color",
+          "type": {
+            "fill": {
+              "solid": {
+                "color": true
+              }
+            }
           }
         }
       }

@@ -4,8 +4,15 @@ import FormattingSettingsSlice = formattingSettings.Slice;
 import FormattingSettingsModel = formattingSettings.Model;
 
 import { BackgroundSettings } from "../../_shared/formatting/backgroundSettings";
+import { TitleSettings } from "../../_shared/formatting/titleSettings";
+import { alignSlice, alignSelfFor, textAlignFor, makeFontControl } from "../../_shared/formatting/textFormatting";
 
 const ConstantOrRule = powerbi.VisualEnumerationInstanceKinds.ConstantOrRule;
+
+// TitleSettings + text-formatting helpers now live in _shared/formatting/
+// (D-13, D-14). Re-exported so visual.ts can import them from "./settings"
+// (stable import path).
+export { TitleSettings, alignSlice, alignSelfFor, textAlignFor };
 
 export class TimeBreakdownSettings extends FormattingSettingsCard {
     name = "timeBreakdownStyle";
@@ -109,17 +116,29 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         value: true,
     });
 
-    categoryFontSize = new formattingSettings.NumUpDown({
-        name: "categoryFontSize",
-        displayName: "Category font size",
-        value: 12,
-    });
+    // Category label text — FontControl composite reuses the existing
+    // "categoryFontSize" property name (D-06/D-07: additive-only, no schema
+    // rename) alongside NEW sibling properties (family/bold/italic/
+    // underline). Bold defaults false; the off-state renders this surface's
+    // own pre-existing hardcoded font-weight:600 (see weightFor idiom in
+    // visual.ts), not a flat 400 — render-nothing-default parity (D-06).
+    private categoryFontBundle = makeFontControl("category", { fontSize: 12, bold: false });
+    categoryFontFamily = this.categoryFontBundle.fontFamily;
+    categoryFontSize = this.categoryFontBundle.fontSize;
+    categoryBold = this.categoryFontBundle.bold;
+    categoryItalic = this.categoryFontBundle.italic;
+    categoryUnderline = this.categoryFontBundle.underline;
+    categoryFont = this.categoryFontBundle.control;
 
-    valueFontSize = new formattingSettings.NumUpDown({
-        name: "valueFontSize",
-        displayName: "Value font size",
-        value: 11,
-    });
+    // Segment label/value text — reuses "valueFontSize"; bold defaults
+    // false (off-state renders the pre-existing hardcoded font-weight:500).
+    private valueFontBundle = makeFontControl("value", { fontSize: 11, bold: false });
+    valueFontFamily = this.valueFontBundle.fontFamily;
+    valueFontSize = this.valueFontBundle.fontSize;
+    valueBold = this.valueFontBundle.bold;
+    valueItalic = this.valueFontBundle.italic;
+    valueUnderline = this.valueFontBundle.underline;
+    valueFont = this.valueFontBundle.control;
 
     segmentOpacity = new formattingSettings.NumUpDown({
         name: "segmentOpacity",
@@ -133,6 +152,19 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         value: { value: "#130064" },
         instanceKind: ConstantOrRule
     });
+
+    // Total/summary label text — brand-new dedicated font composite (this
+    // surface had no independent size/family/style controls before; it
+    // rendered at categoryFontSize with a hardcoded font-weight:700 and
+    // totalColor). Bold defaults TRUE to preserve that exact prior weight
+    // at the new property's default (off would otherwise regress to 400).
+    private totalFontBundle = makeFontControl("total", { fontSize: 12, bold: true });
+    totalFontFamily = this.totalFontBundle.fontFamily;
+    totalFontSize = this.totalFontBundle.fontSize;
+    totalBold = this.totalFontBundle.bold;
+    totalItalic = this.totalFontBundle.italic;
+    totalUnderline = this.totalFontBundle.underline;
+    totalFont = this.totalFontBundle.control;
 
     slices: FormattingSettingsSlice[] = [
         this.barHeight,
@@ -150,10 +182,11 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         this.showTotalLabel,
         this.valueUnit,
         this.showLegend,
-        this.categoryFontSize,
-        this.valueFontSize,
-        this.segmentOpacity,
+        this.categoryFont,
         this.categoryColor,
+        this.valueFont,
+        this.totalFont,
+        this.segmentOpacity,
     ];
 }
 
@@ -189,6 +222,7 @@ export class AxisSettingsCard extends formattingSettings.SimpleCard {
 }
 
 export class VisualFormattingSettingsModel extends FormattingSettingsModel {
+    titleSettings = new TitleSettings();
     timeBreakdownCard = new TimeBreakdownSettings();
     axisSettingsCard = new AxisSettingsCard();
     background = new BackgroundSettings();
@@ -211,5 +245,5 @@ export class VisualFormattingSettingsModel extends FormattingSettingsModel {
         this.background.transparency.value = 100;
     }
 
-    cards = [this.timeBreakdownCard, this.axisSettingsCard, this.background];
+    cards = [this.titleSettings, this.timeBreakdownCard, this.axisSettingsCard, this.background];
 }

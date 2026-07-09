@@ -51,3 +51,25 @@
 
 ## 9. Context Menu Regression (CERT-01 — pbiTimeBreakdown is the passing-cert reference)
 - [ ] Right-click anywhere within the visual still opens the Power BI context menu after the background transparency change (existing contextmenu listener on `this.target`, unchanged by this plan)
+
+## 10. Visual Title (TITLE-01)
+- [ ] Title card appears in the format pane ("Visual Title") with Show Title (off by default), Title Text, Font, Alignment, Font Color
+- [ ] Show Title off (default) renders no title text and reserves no extra vertical space — old saved report (no title properties set) is pixel-identical to pre-upgrade (D-06)
+- [ ] Show Title on + Title Text set renders the title as a persistent SVG text element above the rows, reserving vertical space (rows shift down)
+- [ ] Title Font (family/size/bold/italic/underline) and Alignment (left/center/right, mapped to text-anchor) apply correctly
+- [ ] Title Font Color applies; high contrast mode overrides to the theme foreground colour
+
+## 11. Per-Surface Text Treatment (TEXT-01)
+- [ ] Category label: Font Family/Bold/Italic/Underline apply; Bold off (default) renders the pre-existing font-weight 600, not 400; Bold on renders 700
+- [ ] Segment label/value text (both the in-bar and above-bar "too narrow" placements): Font Family/Bold/Italic/Underline apply; Bold off (default) renders the pre-existing font-weight 500
+- [ ] Total/summary label: new dedicated Font (Family/Size/Bold/Italic/Underline) card; Bold defaults ON, reproducing the pre-existing hardcoded font-weight 700 at default; Font Size decoupled from Category Font Size (documented behaviour change — was previously tied to categoryFontSize)
+- [ ] Axis titles and legend swatches are unchanged (out of this plan's per-surface scope) — still render on the static Category Label Colour swatch
+
+## 12. Text-Colour fx (TEXT-02)
+- [ ] fx button appears next to Category Label Colour swatch in the format pane
+- [ ] Binding a measure to a conditional formatting rule on Category Label Colour changes the category label colour per row
+- [ ] Rows without a rule fall back to the static Category Label Colour swatch value
+- [ ] Total Colour fx (pre-existing from TRANS-04) continues to work unchanged
+
+## 13. Render-Nothing Defaults (D-06)
+- [ ] Old saved report with none of the new title/font/alignment properties set renders pixel-identical to pre-upgrade: no title, category label at weight 600, segment text at weight 500, total label at weight 700 sized to 12px, all at prior default colours
