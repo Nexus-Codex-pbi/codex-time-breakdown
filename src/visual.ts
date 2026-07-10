@@ -30,6 +30,7 @@ import { toRgba } from "./shared/colorHelpers";
 import { Theme, accentToken } from "./shared/bandEngine";
 import { surfaceTokens, TABULAR_NUMS } from "./shared/designTokens";
 import { makeCornerBrackets, CardSignatureHandle } from "./shared/cardSignature";
+import { applyCardSignature } from "./shared/cardSignatureSettings";
 import { settle, MOTION_MAX_MS } from "./shared/motion";
 import { applyHighContrast } from "./shared/highContrast";
 
@@ -176,7 +177,7 @@ export class Visual implements IVisual {
             if (!dv) {
                 this.container.selectAll("*").remove();
                 this.backgroundRect.attr("width", 0).attr("height", 0);
-                this.cornerSignature?.update(accentToken("dark"), { variant: "cornerBracket", mirror: true, muted: true });
+                applyCardSignature(this.cornerSignature, this.formattingSettings?.cardSignature, { autoHex: accentToken("dark"), mirror: true, muted: true });
                 this.events.renderingFinished(options);
                 return;
             }
@@ -194,8 +195,10 @@ export class Visual implements IVisual {
             const theme: Theme = themeFor(bgHexForTheme, bgTransparencyForTheme < 100);
             const hc = applyHighContrast(colorPalette, { fallbackColor: accentToken(theme) });
 
-            this.cornerSignature?.update(hc.active ? hc.color : accentToken(theme), {
-                variant: "cornerBracket",
+            applyCardSignature(this.cornerSignature, this.formattingSettings.cardSignature, {
+                autoHex: accentToken(theme),
+                hcActive: hc.active,
+                hcColor: hc.color,
                 mirror: true,
                 glowMix: hc.active ? 0 : (theme === "dark" ? 55 : 0),
                 muted: false,
@@ -206,8 +209,8 @@ export class Visual implements IVisual {
                 this.container.selectAll("*").remove();
                 this.backgroundRect.attr("width", 0).attr("height", 0);
                 this.rowSelectionIds = [];
-                this.cornerSignature?.update(hc.active ? hc.color : accentToken(theme), {
-                    variant: "cornerBracket", mirror: true, muted: true,
+                applyCardSignature(this.cornerSignature, this.formattingSettings.cardSignature, {
+                    autoHex: accentToken(theme), hcActive: hc.active, hcColor: hc.color, mirror: true, muted: true,
                 });
                 this.events.renderingFinished(options);
                 return;
@@ -240,9 +243,7 @@ export class Visual implements IVisual {
             s.totalColor.selector = dataViewWildcard.createDataViewWildcardSelector(
                 dataViewWildcard.DataViewWildcardMatchingOption.InstancesAndTotals
             );
-            s.totalColor.altConstantSelector = this.rowSelectionIds[0]
-                ? this.rowSelectionIds[0].getSelector()
-                : undefined;
+            s.totalColor.altConstantSelector = undefined; // card-level constant persistence: swatch edits apply to ALL instances + round-trip into the pane (first-instance binding persisted a row-0-only override); fx rules stay per-instance via the wildcard selector;
             this.totalColorHelper = new ColorHelper(
                 this.host.colorPalette,
                 { objectName: "timeBreakdownStyle", propertyName: "totalColor" },
@@ -257,9 +258,7 @@ export class Visual implements IVisual {
             s.categoryColor.selector = dataViewWildcard.createDataViewWildcardSelector(
                 dataViewWildcard.DataViewWildcardMatchingOption.InstancesAndTotals
             );
-            s.categoryColor.altConstantSelector = this.rowSelectionIds[0]
-                ? this.rowSelectionIds[0].getSelector()
-                : undefined;
+            s.categoryColor.altConstantSelector = undefined; // card-level constant persistence: swatch edits apply to ALL instances + round-trip into the pane (first-instance binding persisted a row-0-only override); fx rules stay per-instance via the wildcard selector;
             this.categoryColorHelper = new ColorHelper(
                 this.host.colorPalette,
                 { objectName: "timeBreakdownStyle", propertyName: "categoryColor" },

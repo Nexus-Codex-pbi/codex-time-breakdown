@@ -6,6 +6,7 @@ import FormattingSettingsModel = formattingSettings.Model;
 import { BackgroundSettings } from "./shared/backgroundSettings";
 import { TitleSettings } from "./shared/titleSettings";
 import { alignSlice, alignSelfFor, textAlignFor, makeFontControl } from "./shared/textFormatting";
+import { CardSignatureSettings } from "./shared/cardSignatureSettings";
 
 const ConstantOrRule = powerbi.VisualEnumerationInstanceKinds.ConstantOrRule;
 
@@ -249,6 +250,7 @@ export class AxisSettingsCard extends formattingSettings.SimpleCard {
 }
 
 export class VisualFormattingSettingsModel extends FormattingSettingsModel {
+    cardSignature = new CardSignatureSettings();
     titleSettings = new TitleSettings();
     timeBreakdownCard = new TimeBreakdownSettings();
     axisSettingsCard = new AxisSettingsCard();
@@ -272,5 +274,7 @@ export class VisualFormattingSettingsModel extends FormattingSettingsModel {
         this.background.transparency.value = 100;
     }
 
-    cards = [this.titleSettings, this.timeBreakdownCard, this.axisSettingsCard, this.background];
+    cards = [this.titleSettings, this.timeBreakdownCard, this.axisSettingsCard, this.background,
+        this.cardSignature
+    ];
 }
