@@ -18,7 +18,7 @@ import { dataViewWildcard } from "powerbi-visuals-utils-dataviewutils";
 import { ColorHelper } from "powerbi-visuals-utils-colorutils";
 import { VisualFormattingSettingsModel, TimeBreakdownSettings, AxisSettingsCard, textAlignFor } from "./settings";
 import { parseDataView, TimeBreakdownData, TimeBreakdownRow } from "./dataParser";
-import { toRgba } from "../../_shared/formatting/colorHelpers";
+import { toRgba } from "./shared/colorHelpers";
 
 // v3 appearance engine (frozen, 01-15) — accent token, dim-theme
 // surfaces, the corner-bracket card signature, the capped/reduced-
@@ -27,11 +27,11 @@ import { toRgba } from "../../_shared/formatting/colorHelpers";
 // the EXISTING segment1/2/3Color pickers (their static defaults now ship
 // the v3 categorical ramp — spectrumRamp(index, 3) — see settings.ts);
 // this file never forks a second categorical-ramp computation.
-import { Theme, accentToken } from "../../_shared/formatting/bandEngine";
-import { surfaceTokens, TABULAR_NUMS } from "../../_shared/formatting/designTokens";
-import { makeCornerBrackets, CardSignatureHandle } from "../../_shared/formatting/cardSignature";
-import { settle, MOTION_MAX_MS } from "../../_shared/formatting/motion";
-import { applyHighContrast } from "../../_shared/formatting/highContrast";
+import { Theme, accentToken } from "./shared/bandEngine";
+import { surfaceTokens, TABULAR_NUMS } from "./shared/designTokens";
+import { makeCornerBrackets, CardSignatureHandle } from "./shared/cardSignature";
+import { settle, MOTION_MAX_MS } from "./shared/motion";
+import { applyHighContrast } from "./shared/highContrast";
 
 import * as d3 from "d3";
 
