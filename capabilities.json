@@ -165,6 +165,29 @@
           },
           "displayName": "Total Color"
         },
+        "deadTimeSegment": {
+          "type": {
+            "enumeration": [
+              {
+                "displayName": "None",
+                "value": "none"
+              },
+              {
+                "displayName": "Segment 1",
+                "value": "segment1"
+              },
+              {
+                "displayName": "Segment 2",
+                "value": "segment2"
+              },
+              {
+                "displayName": "Segment 3",
+                "value": "segment3"
+              }
+            ]
+          },
+          "displayName": "Dead Time Segment"
+        },
         "showSegmentLabels": {
           "type": {
             "bool": true

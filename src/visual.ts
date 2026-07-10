@@ -20,7 +20,56 @@ import { VisualFormattingSettingsModel, TimeBreakdownSettings, AxisSettingsCard,
 import { parseDataView, TimeBreakdownData, TimeBreakdownRow } from "./dataParser";
 import { toRgba } from "../../_shared/formatting/colorHelpers";
 
+// v3 appearance engine (frozen, 01-15) — accent token, dim-theme
+// surfaces, the corner-bracket card signature, the capped/reduced-
+// motion-aware settle() helper, and the single HC fallback rule.
+// Consumed read-only (D-11). Segment colours themselves resolve through
+// the EXISTING segment1/2/3Color pickers (their static defaults now ship
+// the v3 categorical ramp — spectrumRamp(index, 3) — see settings.ts);
+// this file never forks a second categorical-ramp computation.
+import { Theme, accentToken } from "../../_shared/formatting/bandEngine";
+import { surfaceTokens, TABULAR_NUMS } from "../../_shared/formatting/designTokens";
+import { makeCornerBrackets, CardSignatureHandle } from "../../_shared/formatting/cardSignature";
+import { settle, MOTION_MAX_MS } from "../../_shared/formatting/motion";
+import { applyHighContrast } from "../../_shared/formatting/highContrast";
+
 import * as d3 from "d3";
+
+/** Luminance-based theme pick (matches the pbiNowVsThen/pbiKpiCard v3
+ * pilots' own convention) — only trusts bgHex as a real signal when the
+ * background layer is actually visible (transparency < 100); otherwise
+ * defaults dark (this visual's pre-existing default is fully
+ * transparent, D-06). */
+function themeFor(hex: string, visible: boolean): Theme {
+    if (!visible) return "dark";
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})/i.exec(hex || "");
+    if (!m) return "dark";
+    const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.55 ? "light" : "dark";
+}
+
+/**
+ * roundedRectPath(x, y, w, h, rTL, rTR, rBR, rBL): a rounded-rect SVG
+ * path with an independent radius per corner — SVG's native `rect`
+ * only supports one uniform rx/ry, but the LED-gap segment run (§5)
+ * needs BIGGER radius on the outer caps of the whole run and a smaller
+ * radius on every inner-adjacent edge, so each segment is drawn as its
+ * own path rather than a `<rect>`.
+ */
+function roundedRectPath(x: number, y: number, w: number, h: number, rTL: number, rTR: number, rBR: number, rBL: number): string {
+    const maxR = Math.min(w, h) / 2;
+    const tl = Math.min(rTL, maxR), tr = Math.min(rTR, maxR), br = Math.min(rBR, maxR), bl = Math.min(rBL, maxR);
+    return `M ${x + tl} ${y} ` +
+        `H ${x + w - tr} ` +
+        `A ${tr} ${tr} 0 0 1 ${x + w} ${y + tr} ` +
+        `V ${y + h - br} ` +
+        `A ${br} ${br} 0 0 1 ${x + w - br} ${y + h} ` +
+        `H ${x + bl} ` +
+        `A ${bl} ${bl} 0 0 1 ${x} ${y + h - bl} ` +
+        `V ${y + tl} ` +
+        `A ${tl} ${tl} 0 0 1 ${x + tl} ${y} Z`;
+}
 
 export class Visual implements IVisual {
     private host: IVisualHost;
@@ -47,6 +96,17 @@ export class Visual implements IVisual {
     // Conditional formatting (fx) state — Category label colour (TEXT-02).
     private categoryColorHelper: ColorHelper | null = null;
 
+    // v3 card signature — one accent-tinted corner-bracket pair for the
+    // whole card (a multi-row list visual, like Progress Bar Card/Now vs
+    // Then — the accent cyan is the card's own identity, distinct from
+    // any segment's categorical colour).
+    private cornerSignature: CardSignatureHandle | null = null;
+
+    // v3 motion — only re-settles a row's total label when its displayed
+    // text changes, tracked per category so a full-rebuild render()
+    // doesn't replay the settle animation on every update.
+    private lastTotalByCategory: Map<string, string> = new Map();
+
     constructor(options: VisualConstructorOptions) {
         this.host = options.host;
         this.target = options.element;
@@ -61,7 +121,8 @@ export class Visual implements IVisual {
             .attr("class", "time-breakdown-scroll")
             .style("width", "100%")
             .style("height", "100%")
-            .style("overflow", "auto");
+            .style("overflow", "auto")
+            .style("position", "relative");
 
         this.svg = this.scrollContainer
             .append("svg")
@@ -77,6 +138,16 @@ export class Visual implements IVisual {
         this.titleEl = this.svg.append("text").attr("class", "time-breakdown-title");
 
         this.container = this.svg.append("g");
+
+        // Corner-bracket card signature — accent-tinted (the card's own
+        // cyan identity, not any single segment's categorical colour),
+        // appended to the scroll container (an HTML overlay above the
+        // SVG, pointer-events:none) so it paints above every row.
+        this.cornerSignature = makeCornerBrackets(
+            this.scrollContainer.node() as HTMLElement,
+            accentToken("dark"),
+            { variant: "cornerBracket", mirror: true }
+        );
 
         // Context menu
         this.target.addEventListener("contextmenu", (e: MouseEvent) => {
@@ -105,6 +176,7 @@ export class Visual implements IVisual {
             if (!dv) {
                 this.container.selectAll("*").remove();
                 this.backgroundRect.attr("width", 0).attr("height", 0);
+                this.cornerSignature?.update(accentToken("dark"), { variant: "cornerBracket", mirror: true, muted: true });
                 this.events.renderingFinished(options);
                 return;
             }
@@ -112,11 +184,31 @@ export class Visual implements IVisual {
             this.formattingSettings = this.formattingSettingsService
                 .populateFormattingSettingsModel(VisualFormattingSettingsModel, dv);
 
+            // ─── v3 theme pick + single HC fallback rule, computed once
+            // and reused everywhere colour is resolved below (§8, D-16:
+            // this visual's own Background card is the source of truth
+            // for whether the card reads as a dark or light surface).
+            const bgSettingsForTheme = this.formattingSettings.background;
+            const bgHexForTheme = bgSettingsForTheme.backgroundColor.value?.value ?? "#ffffff";
+            const bgTransparencyForTheme = bgSettingsForTheme.transparency.value ?? 100;
+            const theme: Theme = themeFor(bgHexForTheme, bgTransparencyForTheme < 100);
+            const hc = applyHighContrast(colorPalette, { fallbackColor: accentToken(theme) });
+
+            this.cornerSignature?.update(hc.active ? hc.color : accentToken(theme), {
+                variant: "cornerBracket",
+                mirror: true,
+                glowMix: hc.active ? 0 : (theme === "dark" ? 55 : 0),
+                muted: false,
+            });
+
             const data = parseDataView(dv);
             if (!data || data.rows.length === 0) {
                 this.container.selectAll("*").remove();
                 this.backgroundRect.attr("width", 0).attr("height", 0);
                 this.rowSelectionIds = [];
+                this.cornerSignature?.update(hc.active ? hc.color : accentToken(theme), {
+                    variant: "cornerBracket", mirror: true, muted: true,
+                });
                 this.events.renderingFinished(options);
                 return;
             }
@@ -179,7 +271,7 @@ export class Visual implements IVisual {
             // Set viewport size on scroll container; render will compute actual content size
             this.scrollContainer.style("width", w + "px").style("height", h + "px");
 
-            const contentH = this.render(data, w);
+            const contentH = this.render(data, w, theme, hc);
             // Size SVG to actual content so scroll container shows scrollbars when needed
             this.svg.attr("width", w).attr("height", contentH);
 
@@ -206,12 +298,27 @@ export class Visual implements IVisual {
         }
     }
 
-    private render(data: TimeBreakdownData, width: number): number {
+    private render(data: TimeBreakdownData, width: number, theme: Theme = "dark", hc: ReturnType<typeof applyHighContrast> = applyHighContrast(null)): number {
         this.container.selectAll("*").remove();
 
         const s = this.formattingSettings.timeBreakdownCard;
         const barHeight = s.barHeight.value;
         const barRadius = s.barRadius.value;
+        // v2 LED-gap inner radius (§5) — smaller than the user's own
+        // "outer cap" barRadius so a run of segments reads as LED
+        // blocks with a 1px gap, while the true outer ends of the whole
+        // run (the very first segment's left corners, the very last
+        // segment's right corners) keep the fuller barRadius the user
+        // already controls (D-16).
+        const ledInnerRadius = Math.min(2, barRadius);
+        const ledGap = 1;
+
+        // ─── v2 degradation ladder (§7): callouts -> labels -> title, as
+        // the tile shrinks. Each rung only SUPPRESSES a surface that is
+        // otherwise on; it never overrides an already-off toggle (D-16).
+        const degradeCallouts = width < 260;   // in-segment value/label callouts hide first
+        const degradeLabels = width < 200;     // legend + axis titles hide next
+        const degradeTitle = width < 140;      // visual title hides last
         const rowSpacing = s.rowSpacing.value;
         const opacity = this.isHighContrast ? 1 : Math.min(100, Math.max(0, s.segmentOpacity.value)) / 100;
         const unit = s.valueUnit.value || "";
@@ -246,6 +353,15 @@ export class Visual implements IVisual {
         const totalStyle = s.totalItalic.value ? "italic" : "normal";
         const totalDecoration = s.totalUnderline.value ? "underline" : "none";
 
+        // Dead Time Segment (§2/§5, genuinely optional — "none" default
+        // preserves pre-plan behaviour exactly): the one marked segment
+        // renders the shared muted/unit-token grey instead of its
+        // categorical-ramp colour ("Wait is deliberately grey — dead time
+        // shouldn't get a hero colour"), regardless of its own ColorPicker.
+        const deadTimeIndex = { none: -1, segment1: 0, segment2: 1, segment3: 2 }
+            [String(s.deadTimeSegment.value?.value || "none")] ?? -1;
+        const deadTimeGrey = surfaceTokens(theme).muted;
+
         const segmentConfigs = this.isHighContrast
             ? [
                 { color: this.highContrastForeground, label: s.segment1Label.value },
@@ -253,16 +369,19 @@ export class Visual implements IVisual {
                 { color: this.highContrastForeground, label: s.segment3Label.value },
             ]
             : [
-                { color: s.segment1Color.value.value, label: s.segment1Label.value },
-                { color: s.segment2Color.value.value, label: s.segment2Label.value },
-                { color: s.segment3Color.value.value, label: s.segment3Label.value },
+                { color: deadTimeIndex === 0 ? deadTimeGrey : s.segment1Color.value.value, label: s.segment1Label.value },
+                { color: deadTimeIndex === 1 ? deadTimeGrey : s.segment2Color.value.value, label: s.segment2Label.value },
+                { color: deadTimeIndex === 2 ? deadTimeGrey : s.segment3Color.value.value, label: s.segment3Label.value },
             ];
 
         // ─── Visual Title (iframe-internal, Policy 1180.2.5) ───────────
         // Reserves vertical space above the rows when shown; shares
         // margin.top with the pre-existing 8px breathing room.
         const titleFmt = this.formattingSettings.titleSettings;
-        const showTitle = !!titleFmt.showTitle.value && !!titleFmt.titleText.value;
+        // v2 degradation ladder (§7): the title is the LAST thing to
+        // hide as the tile shrinks (after callouts, then legend/axis
+        // titles) — see degradeTitle above.
+        const showTitle = !!titleFmt.showTitle.value && !!titleFmt.titleText.value && !degradeTitle;
         const titleFontSize = titleFmt.titleFontSize.value || 14;
         const titleH = showTitle ? titleFontSize + 12 : 0;
 
@@ -291,8 +410,10 @@ export class Visual implements IVisual {
             this.titleEl.style("display", "none");
         }
 
-        // Legend height
-        const legendH = s.showLegend.value ? 24 : 0;
+        // Legend height — degraded (hidden) before the title as the tile
+        // shrinks (§7: callouts -> labels/legend -> title).
+        const showLegendResolved = s.showLegend.value && !degradeLabels;
+        const legendH = showLegendResolved ? 24 : 0;
 
         let yOffset = margin.top;
 
@@ -331,25 +452,36 @@ export class Visual implements IVisual {
             const barY = catFontSize + 4;
             let xPos = 0;
 
-            // Segments
-            row.segments.forEach((seg) => {
+            // Segments — categorical ramp fill (segmentConfigs above),
+            // rendered as a rounded-corner PATH (not a plain <rect>) so
+            // the LED-gap rhythm can carry a BIGGER radius only on the
+            // true outer ends of the whole run (this row's first
+            // segment's left corners, last segment's right corners) and
+            // a smaller LED radius on every inner-adjacent edge (§5).
+            row.segments.forEach((seg, segIdx) => {
                 const segW = (seg.value / maxTotal) * trackWidth;
                 const cfg = segmentConfigs[seg.roleIndex] || segmentConfigs[0];
+                const isFirst = segIdx === 0;
+                const isLast = segIdx === row.segments.length - 1;
+                const rLeft = isFirst ? barRadius : ledInnerRadius;
+                const rRight = isLast ? barRadius : ledInnerRadius;
+                // 1px LED gap trimmed from the trailing (right) edge only
+                // — the next segment's own xPos is untouched, so the gap
+                // appears between the two without disturbing the
+                // cumulative total-label math below.
+                const renderedW = isLast ? Math.max(0, segW) : Math.max(0, segW - ledGap);
 
-                // Segment rect
-                rowG.append("rect")
-                    .attr("x", xPos)
-                    .attr("y", barY)
-                    .attr("width", Math.max(0, segW))
-                    .attr("height", barHeight)
-                    .attr("rx", barRadius)
-                    .attr("ry", barRadius)
+                // Segment path (rounded-rect with per-corner radius)
+                rowG.append("path")
+                    .attr("d", roundedRectPath(xPos, barY, Math.max(renderedW, 0.01), barHeight, rLeft, rRight, rRight, rLeft))
                     .attr("fill", cfg.color)
                     .attr("opacity", opacity);
 
-                // Segment label + value text
-                const showLabel = s.showSegmentLabels.value;
-                const showValue = s.showSegmentValues.value;
+                // Segment label + value text — suppressed first in the
+                // degradation ladder (§7) even when the tile has room for
+                // an individual segment's own segW > 30 threshold.
+                const showLabel = s.showSegmentLabels.value && !degradeCallouts;
+                const showValue = s.showSegmentValues.value && !degradeCallouts;
                 if ((showLabel || showValue) && segW > 30) {
                     const parts: string[] = [];
                     if (showLabel) parts.push(cfg.label);
@@ -365,6 +497,7 @@ export class Visual implements IVisual {
                         .style("font-weight", valWeight)
                         .style("font-style", valStyle)
                         .style("text-decoration", valDecoration)
+                        .style("font-feature-settings", TABULAR_NUMS)
                         .attr("fill", this.contrastText(cfg.color))
                         .text(labelText);
                 } else if ((showLabel || showValue) && segW > 0) {
@@ -382,6 +515,7 @@ export class Visual implements IVisual {
                         .style("font-weight", valWeight)
                         .style("font-style", valStyle)
                         .style("text-decoration", valDecoration)
+                        .style("font-feature-settings", TABULAR_NUMS)
                         .attr("fill", cfg.color)
                         .text(labelText);
                 }
@@ -389,10 +523,14 @@ export class Visual implements IVisual {
                 xPos += segW;
             });
 
-            // Total label at end
+            // Total label at end — settles via the shared motion helper
+            // (§6) once per category when its displayed text changes,
+            // capped at MOTION_MAX_MS and skipped under
+            // prefers-reduced-motion internally.
             if (s.showTotalLabel.value) {
                 const totalVal = row.total ?? row.segments.reduce((sum, seg) => sum + seg.value, 0);
-                rowG.append("text")
+                const totalText = `${Math.round(totalVal)} ${unit}`;
+                const totalEl = rowG.append("text")
                     .attr("x", xPos + 8)
                     .attr("y", barY + barHeight / 2)
                     .attr("dy", "0.35em")
@@ -401,8 +539,17 @@ export class Visual implements IVisual {
                     .style("font-weight", totalWeight)
                     .style("font-style", totalStyle)
                     .style("text-decoration", totalDecoration)
+                    .style("font-feature-settings", TABULAR_NUMS)
                     .attr("fill", totalColor)
-                    .text(`${Math.round(totalVal)} ${unit}`);
+                    .text(totalText);
+
+                if (this.lastTotalByCategory.get(row.category) !== totalText) {
+                    settle(totalEl.node() as unknown as SVGElement, [
+                        { opacity: 0.35, transform: "translateY(2px)" },
+                        { opacity: 1, transform: "translateY(0)" },
+                    ], { duration: Math.min(200, MOTION_MAX_MS) });
+                    this.lastTotalByCategory.set(row.category, totalText);
+                }
             }
 
             // Invisible hit rect for tooltip and cross-filtering
@@ -449,9 +596,10 @@ export class Visual implements IVisual {
             yOffset += catFontSize + 4 + barHeight + rowSpacing;
         });
 
-        // Axis titles (X = time values, Y = categories)
+        // Axis titles (X = time values, Y = categories) — degraded
+        // (hidden) before the title as the tile shrinks (§7).
         const axisS = this.formattingSettings.axisSettingsCard;
-        const showAxisTitles = axisS.showAxisTitles.value;
+        const showAxisTitles = axisS.showAxisTitles.value && !degradeLabels;
         const xAxisTitle = axisS.xAxisTitle.value || "";
         const yAxisTitle = axisS.yAxisTitle.value || "";
         if (showAxisTitles) {
@@ -465,7 +613,7 @@ export class Visual implements IVisual {
                 this.container.append("text")
                     .classed("axis-title x-axis-title", true)
                     .attr("x", margin.left + trackWidth / 2)
-                    .attr("y", yOffset + (s.showLegend.value ? 0 : 8))
+                    .attr("y", yOffset + (showLegendResolved ? 0 : 8))
                     .attr("text-anchor", "middle")
                     .attr("font-size", axisTitleFontSize + "px")
                     .attr("font-weight", "600")
@@ -491,7 +639,7 @@ export class Visual implements IVisual {
         }
 
         // Legend
-        if (s.showLegend.value) {
+        if (showLegendResolved) {
             const usedSegments = new Set<number>();
             data.rows.forEach(row => row.segments.forEach(seg => usedSegments.add(seg.roleIndex)));
 
@@ -546,6 +694,8 @@ export class Visual implements IVisual {
     }
 
     public destroy(): void {
+        this.cornerSignature?.destroy();
+        this.cornerSignature = null;
         this.container?.selectAll("*").remove();
         this.svg?.remove();
         this.container = null;

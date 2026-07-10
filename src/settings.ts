@@ -36,10 +36,15 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         value: 32,
     });
 
+    // v2 board defaults (D-16): the frozen v3 engine's own categorical
+    // ramp (spectrumRamp(index, 3), dark theme) — cyan / violet / magenta —
+    // so a brand-new report lands on the board's "brand ramp" language;
+    // any report that already set a segment ColorPicker keeps its own
+    // saved value untouched.
     segment1Color = new formattingSettings.ColorPicker({
         name: "segment1Color",
         displayName: "Segment 1 colour",
-        value: { value: "#e60e22" },
+        value: { value: "#00d9ff" },
         instanceKind: ConstantOrRule
     });
 
@@ -53,7 +58,7 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
     segment2Color = new formattingSettings.ColorPicker({
         name: "segment2Color",
         displayName: "Segment 2 colour",
-        value: { value: "#d4920a" },
+        value: { value: "#b9a7ff" },
         instanceKind: ConstantOrRule
     });
 
@@ -67,7 +72,7 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
     segment3Color = new formattingSettings.ColorPicker({
         name: "segment3Color",
         displayName: "Segment 3 colour",
-        value: { value: "#73afd5" },
+        value: { value: "#ff3b52" },
         instanceKind: ConstantOrRule
     });
 
@@ -83,6 +88,27 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         displayName: "Total colour",
         value: { value: "#130064" },
         instanceKind: ConstantOrRule
+    });
+
+    // v2 board addition (LOOK-03, genuinely optional — default "None"
+    // preserves pre-plan behaviour exactly, D-16): marks ONE of the three
+    // fixed segment roles as dead/idle time so it renders grey instead of
+    // its categorical-ramp colour ("Wait is deliberately grey — dead time
+    // shouldn't get a hero colour"). This visual's schema is 3 fixed
+    // segment measures (not variable categories), so a dropdown selecting
+    // which segment is dead time is the additive, non-schema-breaking
+    // equivalent of the design board's dedicated "Wait" category.
+    deadTimeSegment = new formattingSettings.ItemDropdown({
+        name: "deadTimeSegment",
+        displayName: "Dead Time Segment",
+        description: "Render one segment as dead/idle time (grey, no hero colour). Leave as None to keep every segment on the categorical ramp.",
+        items: [
+            { displayName: "None", value: "none" },
+            { displayName: "Segment 1", value: "segment1" },
+            { displayName: "Segment 2", value: "segment2" },
+            { displayName: "Segment 3", value: "segment3" }
+        ],
+        value: { displayName: "None", value: "none" }
     });
 
     showSegmentLabels = new formattingSettings.ToggleSwitch({
@@ -177,6 +203,7 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         this.segment3Color,
         this.segment3Label,
         this.totalColor,
+        this.deadTimeSegment,
         this.showSegmentLabels,
         this.showSegmentValues,
         this.showTotalLabel,

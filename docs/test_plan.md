@@ -72,4 +72,31 @@
 - [ ] Total Colour fx (pre-existing from TRANS-04) continues to work unchanged
 
 ## 13. Render-Nothing Defaults (D-06)
+
+## 14. v2 Board Look — Categorical Ramp + LED Gaps (LOOK-03)
+- [ ] Segment 1/2/3 default colours ship the v3 categorical ramp (cyan / violet / magenta, spectrumRamp(index, 3) dark theme) on a brand-new report
+- [ ] A report with a custom Segment 1/2/3 colour already set keeps that exact colour (D-16)
+- [ ] Adjacent segments in the same row render with a visible 1px LED gap; the true outer ends of the run (first segment's left corners, last segment's right corners) carry the fuller user-set Bar Radius, while every inner-adjacent edge uses a smaller LED radius
+- [ ] A single-segment row (only one of Segment 1/2/3 bound with a positive value) renders fully rounded on all four corners
+
+## 15. v2 Board Look — Dead Time Segment (LOOK-03)
+- [ ] Dead Time Segment defaults to "None" — a report that never touches this property renders identically to pre-plan behaviour (every segment on the categorical ramp/custom colour)
+- [ ] Selecting Segment 1/2/3 as the Dead Time Segment renders that segment (bar + legend swatch) in the shared muted/unit-token grey, overriding its own Segment Colour swatch
+- [ ] High contrast: the dead-time segment still renders the system foreground colour like every other segment (HC takes precedence over the grey override)
+
+## 16. v2 Board Look — Degradation Ladder (LOOK-03)
+- [ ] At normal tile widths, in-segment callouts (segment label/value text), the legend, axis titles, and the visual title all render per their own toggles
+- [ ] Shrinking the tile hides in-segment callouts FIRST (segW-based per-segment suppression already existed; a global width threshold now also suppresses them suite-wide)
+- [ ] Shrinking further hides the legend and axis titles NEXT, even if their own toggles are still ON
+- [ ] Shrinking further still hides the visual title LAST
+- [ ] Widening the tile back out restores each surface in reverse order — nothing is permanently disabled by a narrow resize
+
+## 17. v2 Board Look — Motion + Corner Signature (LOOK-03)
+- [ ] The Total label settles via the shared settle() helper (capped at MOTION_MAX_MS, skipped under prefers-reduced-motion) only when its displayed text actually changes for that category — not on every re-render
+- [ ] An accent-cyan corner-bracket signature appears at the card's top-left/bottom-right corners, muted (dimmed, no glow) on the empty-data state
+- [ ] Corner bracket colour swaps to the system foreground colour under high contrast, with glow disabled
+
+## 18. D-16 Override Resolution (LOOK-03)
+- [ ] Segment/Total Colour, Bar Radius, and all pre-existing toggles keep resolving exactly as before when explicitly set on a saved report
+- [ ] The new Dead Time Segment property is purely additive — its absence (the common case) changes nothing about existing rendering
 - [ ] Old saved report with none of the new title/font/alignment properties set renders pixel-identical to pre-upgrade: no title, category label at weight 600, segment text at weight 500, total label at weight 700 sized to 12px, all at prior default colours
