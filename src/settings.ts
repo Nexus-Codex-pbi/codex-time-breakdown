@@ -7,6 +7,7 @@ import { BackgroundSettings } from "./shared/backgroundSettings";
 import { TitleSettings } from "./shared/titleSettings";
 import { alignSlice, alignSelfFor, textAlignFor, makeFontControl } from "./shared/textFormatting";
 import { CardSignatureSettings } from "./shared/cardSignatureSettings";
+import { BorderSettings } from "./shared/borderSettings";
 
 const ConstantOrRule = powerbi.VisualEnumerationInstanceKinds.ConstantOrRule;
 
@@ -72,8 +73,11 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
 
     segment3Color = new formattingSettings.ColorPicker({
         name: "segment3Color",
+        // Board's categorical ramp: Prep cyan · Build violet · Review LIME.
+        // Was #ff3b52 (magenta) which read as the direction-law "time added"
+        // colour — segments are stage identity, never judgment (Neil 2026-07-15).
         displayName: "Segment 3 colour",
-        value: { value: "#ff3b52" },
+        value: { value: "#8aff2b" },
         instanceKind: ConstantOrRule
     });
 
@@ -255,6 +259,7 @@ export class VisualFormattingSettingsModel extends FormattingSettingsModel {
     timeBreakdownCard = new TimeBreakdownSettings();
     axisSettingsCard = new AxisSettingsCard();
     background = new BackgroundSettings();
+    visualBorder = new BorderSettings();
 
     constructor() {
         super();
@@ -275,6 +280,6 @@ export class VisualFormattingSettingsModel extends FormattingSettingsModel {
     }
 
     cards = [this.titleSettings, this.timeBreakdownCard, this.axisSettingsCard, this.background,
-        this.cardSignature
+        this.cardSignature, this.visualBorder
     ];
 }

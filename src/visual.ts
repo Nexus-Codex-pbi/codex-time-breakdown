@@ -31,6 +31,7 @@ import { Theme, accentToken } from "./shared/bandEngine";
 import { surfaceTokens, TABULAR_NUMS } from "./shared/designTokens";
 import { makeCornerBrackets, CardSignatureHandle } from "./shared/cardSignature";
 import { applyCardSignature } from "./shared/cardSignatureSettings";
+import { resolveBorder } from "./shared/borderSettings";
 import { settle, MOTION_MAX_MS } from "./shared/motion";
 import { applyHighContrast } from "./shared/highContrast";
 
@@ -78,6 +79,7 @@ export class Visual implements IVisual {
     private scrollContainer: d3.Selection<HTMLDivElement, unknown, null, undefined>;
     private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
     private backgroundRect: d3.Selection<SVGRectElement, unknown, null, undefined>;
+    private borderRect: d3.Selection<SVGRectElement, unknown, null, undefined>;
     private titleEl: d3.Selection<SVGTextElement, unknown, null, undefined>;
     private container: d3.Selection<SVGGElement, unknown, null, undefined>;
     private formattingSettings: VisualFormattingSettingsModel;
@@ -139,6 +141,10 @@ export class Visual implements IVisual {
         this.titleEl = this.svg.append("text").attr("class", "time-breakdown-title");
 
         this.container = this.svg.append("g");
+        // Visual's own Border card — a stroke-rect sibling appended AFTER the
+        // content <g> so it frames on top; sized/styled per render. (Content is
+        // cleared via container.selectAll, so this persistent rect survives.)
+        this.borderRect = this.svg.append("rect").attr("class", "time-breakdown-border").attr("fill", "none").style("display", "none");
 
         // Corner-bracket card signature — accent-tinted (the card's own
         // cyan identity, not any single segment's categorical colour),
@@ -291,6 +297,26 @@ export class Visual implements IVisual {
                 .attr("height", contentH)
                 .attr("fill", this.isHighContrast ? "none" : toRgba(bgHex, bgTransparencyPct));
 
+            // Visual's own Border card — stroke-rect framing the visual; inset
+            // by half the width so the stroke isn't clipped at the tile edge.
+            const b = resolveBorder(this.formattingSettings.visualBorder, {
+                hcActive: this.isHighContrast,
+                hcColor: this.highContrastForeground,
+                palette: this.host.colorPalette,
+                metadataObjects: options.dataViews?.[0]?.metadata?.objects,
+            });
+            if (b) {
+                const inset = b.width / 2;
+                this.borderRect
+                    .attr("x", inset).attr("y", inset)
+                    .attr("width", Math.max(0, w - b.width)).attr("height", Math.max(0, contentH - b.width))
+                    .attr("rx", b.radius).attr("ry", b.radius)
+                    .attr("stroke", b.colorCss).attr("stroke-width", b.width)
+                    .style("display", null);
+            } else {
+                this.borderRect.style("display", "none");
+            }
+
             this.events.renderingFinished(options);
         } catch (e) {
             this.events.renderingFailed(options, String(e));
@@ -432,12 +458,17 @@ export class Visual implements IVisual {
             // per-instance object overrides, falling back to the static
             // format-pane value otherwise.
             const instanceObjects = this.categoricalCategories?.objects?.[rowIndex];
-            const resolvedTotalColor = this.totalColorHelper?.getColorForMeasure(instanceObjects, "totalColor") ?? totalColorDefault;
+            let resolvedTotalColor = this.totalColorHelper?.getColorForMeasure(instanceObjects, "totalColor") ?? totalColorDefault;
+            // D-16 adaptive: the untouched dark-navy default swaps to the light
+            // text token on dark surfaces (total value was invisible on dark —
+            // Neil sweep pattern); user-set / fx honoured.
+            if (!this.isHighContrast && resolvedTotalColor === "#130064" && theme === "dark") resolvedTotalColor = surfaceTokens("dark").text;
             const totalColor = this.isHighContrast ? this.highContrastForeground : resolvedTotalColor;
 
             // Per-row Category Label Colour resolution (TEXT-02 fx): same
             // pattern as Total Colour above.
-            const resolvedCategoryColor = this.categoryColorHelper?.getColorForMeasure(instanceObjects, "categoryColor") ?? s.categoryColor.value.value;
+            let resolvedCategoryColor = this.categoryColorHelper?.getColorForMeasure(instanceObjects, "categoryColor") ?? s.categoryColor.value.value;
+            if (!this.isHighContrast && resolvedCategoryColor === "#130064" && theme === "dark") resolvedCategoryColor = surfaceTokens("dark").text;
             const catColor = this.isHighContrast ? this.highContrastForeground : resolvedCategoryColor;
 
             // Category label
@@ -602,6 +633,11 @@ export class Visual implements IVisual {
 
         // Axis titles (X = time values, Y = categories) — degraded
         // (hidden) before the title as the tile shrinks (§7).
+        // Adapted flat category-label colour for the axis titles + legend
+        // (same D-16 sweep as the per-row labels above — they were invisible on
+        // dark otherwise).
+        const catFlatColor = (s.categoryColor.value.value === "#130064" && theme === "dark")
+            ? surfaceTokens("dark").text : s.categoryColor.value.value;
         const axisS = this.formattingSettings.axisSettingsCard;
         const showAxisTitles = axisS.showAxisTitles.value && !degradeLabels;
         const xAxisTitle = axisS.xAxisTitle.value || "";
@@ -612,7 +648,7 @@ export class Visual implements IVisual {
             // scope (interfaces limit this task to category/segment/total
             // labels) — kept on the static Category Label Colour swatch,
             // unchanged from pre-plan behaviour.
-            const titleColor = this.isHighContrast ? this.highContrastForeground : s.categoryColor.value.value;
+            const titleColor = this.isHighContrast ? this.highContrastForeground : catFlatColor;
             if (xAxisTitle) {
                 this.container.append("text")
                     .classed("axis-title x-axis-title", true)
@@ -672,7 +708,7 @@ export class Visual implements IVisual {
                     .attr("dy", "0.35em")
                     .attr("font-size", "10px")
                     .attr("font-family", "Segoe UI, sans-serif")
-                    .attr("fill", this.isHighContrast ? this.highContrastForeground : s.categoryColor.value.value)
+                    .attr("fill", this.isHighContrast ? this.highContrastForeground : catFlatColor)
                     .text(cfg.label);
 
                 const bbox = (label.node() as SVGTextElement).getBBox();
