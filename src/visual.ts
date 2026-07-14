@@ -631,6 +631,29 @@ export class Visual implements IVisual {
             yOffset += catFontSize + 4 + barHeight + rowSpacing;
         });
 
+        // Numeric x-axis tick VALUES on the shared scale (board: 0 · 3 · 6 …).
+        // Missing before this pass — the design's key "shared hours scale" cue.
+        // Degrades with the labels; nice-rounded step from the data's max total.
+        if (!degradeLabels && maxTotal > 0) {
+            const rawStep = maxTotal / 6;
+            const mag = Math.pow(10, Math.floor(Math.log10(rawStep) || 0));
+            const norm = rawStep / mag;
+            const niceStep = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+            const tickColor = this.isHighContrast ? this.highContrastForeground : surfaceTokens(theme).muted;
+            const tickY = yOffset + 12;
+            for (let v = 0; v <= maxTotal + niceStep * 0.001; v += niceStep) {
+                this.container.append("text")
+                    .attr("x", margin.left + (v / maxTotal) * trackWidth)
+                    .attr("y", tickY)
+                    .attr("text-anchor", "middle")
+                    .attr("font-size", "10px")
+                    .attr("font-family", "Segoe UI, sans-serif")
+                    .attr("fill", tickColor)
+                    .text(String(Math.round(v)));
+            }
+            yOffset += 20;
+        }
+
         // Axis titles (X = time values, Y = categories) — degraded
         // (hidden) before the title as the tile shrinks (§7).
         // Adapted flat category-label colour for the axis titles + legend
