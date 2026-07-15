@@ -27,7 +27,7 @@ import { toRgba } from "./shared/colorHelpers";
 // the EXISTING segment1/2/3Color pickers (their static defaults now ship
 // the v3 categorical ramp — spectrumRamp(index, 3) — see settings.ts);
 // this file never forks a second categorical-ramp computation.
-import { Theme, accentToken } from "./shared/bandEngine";
+import { Theme, accentToken, bandColor } from "./shared/bandEngine";
 import { surfaceTokens, TABULAR_NUMS } from "./shared/designTokens";
 import { makeCornerBrackets, CardSignatureHandle } from "./shared/cardSignature";
 import { applyCardSignature } from "./shared/cardSignatureSettings";
@@ -129,7 +129,12 @@ export class Visual implements IVisual {
 
         this.svg = this.scrollContainer
             .append("svg")
-            .attr("class", "time-breakdown");
+            .attr("class", "time-breakdown")
+            // Block-level so the SVG has no inline descender gap: when its
+            // height exactly equals the scroll container (tile-fill case) an
+            // inline SVG's baseline whitespace overflows by a few px and
+            // spuriously triggers BOTH scrollbars.
+            .style("display", "block");
 
         // Dedicated background layer (D-05) — persistent SVG rect, first
         // child so it never paints over row/legend content. Never whole-
@@ -277,8 +282,13 @@ export class Visual implements IVisual {
             this.scrollContainer.style("width", w + "px").style("height", h + "px");
 
             const contentH = this.render(data, w, theme, hc);
-            // Size SVG to actual content so scroll container shows scrollbars when needed
-            this.svg.attr("width", w).attr("height", contentH);
+            // Fill the tile ("flexible like all the others"): when the natural
+            // content is SHORTER than the viewport, stretch the card (svg +
+            // background + border) to the full height so there's no dead
+            // bottom strip; when TALLER, keep contentH so the scroll container
+            // shows scrollbars.
+            const fillH = Math.max(contentH, h);
+            this.svg.attr("width", w).attr("height", fillH);
 
             // ─── Dedicated background layer (D-05) ─────────────────────
             // Suite-wide shared Background card (Colour + Transparency,
@@ -294,7 +304,7 @@ export class Visual implements IVisual {
             const bgTransparencyPct = background.transparency.value ?? 100;
             this.backgroundRect
                 .attr("width", w)
-                .attr("height", contentH)
+                .attr("height", fillH)
                 .attr("fill", this.isHighContrast ? "none" : toRgba(bgHex, bgTransparencyPct));
 
             // Visual's own Border card — stroke-rect framing the visual; inset
@@ -309,7 +319,7 @@ export class Visual implements IVisual {
                 const inset = b.width / 2;
                 this.borderRect
                     .attr("x", inset).attr("y", inset)
-                    .attr("width", Math.max(0, w - b.width)).attr("height", Math.max(0, contentH - b.width))
+                    .attr("width", Math.max(0, w - b.width)).attr("height", Math.max(0, fillH - b.width))
                     .attr("rx", b.radius).attr("ry", b.radius)
                     .attr("stroke", b.colorCss).attr("stroke-width", b.width)
                     .style("display", null);
@@ -410,10 +420,25 @@ export class Visual implements IVisual {
         const titleFontSize = titleFmt.titleFontSize.value || 14;
         const titleH = showTitle ? titleFontSize + 12 : 0;
 
-        // Layout
-        const margin = { top: 8 + titleH, right: 60, bottom: 30, left: 12 };
+        // ─── Total · Δ delta chip (board v2) — a pill after each row's total
+        // showing that scenario's % difference from the FIRST row (baseline):
+        // lime = less time (saved), magenta = more time (added), grey =
+        // baseline. Reserves extra right-margin so total+chip fit; hidden with
+        // the other callouts on narrow tiles and when there's only one row
+        // (nothing to compare against).
+        const showDelta = s.showDeltaChip.value && s.showTotalLabel.value
+            && data.rows.length > 1 && !degradeCallouts;
+
+        // Layout — reserve a left gutter for the rotated Y-axis title so it
+        // doesn't collide with the bars/category labels ("axis titles snug").
+        const axisCfg = this.formattingSettings.axisSettingsCard;
+        const hasYTitle = axisCfg.showAxisTitles.value && !degradeLabels && !!axisCfg.yAxisTitle.value;
+        const margin = { top: 8 + titleH, right: showDelta ? 120 : 60, bottom: 30, left: hasYTitle ? 30 : 12 };
         const trackWidth = width - margin.left - margin.right;
         const maxTotal = data.maxTotal || 1;
+        const baselineTotal = data.rows[0]
+            ? (data.rows[0].total ?? data.rows[0].segments.reduce((sum, seg) => sum + seg.value, 0))
+            : 0;
 
         if (showTitle) {
             const tAlign = textAlignFor(String((titleFmt as any).titleAlign?.value || "left"));
@@ -445,7 +470,57 @@ export class Visual implements IVisual {
         const showLegendResolved = s.showLegend.value && !degradeLabels;
         const legendH = showLegendResolved ? 24 : 0;
 
+        // Shared flat category-label colour for the legend + axis titles
+        // (D-16 sweep: the untouched dark-navy default is invisible on dark
+        // surfaces, so swap to the light text token there).
+        const catFlatColor = (s.categoryColor.value.value === "#130064" && theme === "dark")
+            ? surfaceTokens("dark").text : s.categoryColor.value.value;
+
         let yOffset = margin.top;
+
+        // ─── Legend (board v2: TOP of the card, above the rows) ─────────
+        // Previously appended at the BOTTOM without advancing yOffset — and
+        // since the SVG is sized to the returned content height, the legend
+        // was drawn past the viewport's bottom edge and clipped away
+        // entirely (invisible). Rendering it up here reserves its height so
+        // the rows flow beneath it, matching the design board's placement.
+        if (showLegendResolved) {
+            const usedSegments = new Set<number>();
+            data.rows.forEach(row => row.segments.forEach(seg => usedSegments.add(seg.roleIndex)));
+
+            const legendG = this.container.append("g");
+
+            let lx = 0;
+            usedSegments.forEach((idx) => {
+                const cfg = segmentConfigs[idx];
+                if (!cfg) return;
+
+                legendG.append("rect")
+                    .attr("x", lx).attr("y", 0)
+                    .attr("width", 10).attr("height", 10).attr("rx", 2)
+                    .attr("fill", cfg.color).attr("opacity", opacity);
+
+                const label = legendG.append("text")
+                    .attr("x", lx + 14).attr("y", 5).attr("dy", "0.35em")
+                    .attr("font-size", "10px").attr("font-family", "Segoe UI, sans-serif")
+                    .attr("fill", this.isHighContrast ? this.highContrastForeground : catFlatColor)
+                    .text(cfg.label);
+
+                const bbox = (label.node() as SVGTextElement).getBBox();
+                lx += 14 + bbox.width + 16;
+            });
+
+            // Legend alignment (legendAlign): left (default) | centre | right
+            // — measure the built run (lx minus the trailing gap) and shift the
+            // whole group. Mirrors the title's alignment convention.
+            const legendW = Math.max(0, lx - 16);
+            const legAlign = textAlignFor(String((s as any).legendAlign?.value || "left"));
+            const legX = legAlign === "center" ? (width - legendW) / 2
+                : legAlign === "right" ? (width - margin.left - legendW)
+                : margin.left;
+            legendG.attr("transform", `translate(${Math.max(margin.left, legX)}, ${yOffset})`);
+            yOffset += legendH;
+        }
 
         // Rows
         data.rows.forEach((row: TimeBreakdownRow, rowIndex: number) => {
@@ -585,6 +660,42 @@ export class Visual implements IVisual {
                     ], { duration: Math.min(200, MOTION_MAX_MS) });
                     this.lastTotalByCategory.set(row.category, totalText);
                 }
+
+                // Δ delta chip (board Total · Δ): pill after the total showing
+                // % vs the first row (baseline). rect appended before text so
+                // it sits under it; both sized after measuring the label.
+                if (showDelta) {
+                    const totalW = (totalEl.node() as SVGTextElement).getBBox().width;
+                    const chipX = (xPos + 8) + totalW + 6;
+                    const chipH = 16, chipPadX = 6;
+                    let chipStr: string, chipInk: string, chipFill: string;
+                    if (rowIndex === 0 || !(baselineTotal > 0)) {
+                        chipStr = "baseline";
+                        const grey = surfaceTokens(theme).muted;
+                        chipInk = this.isHighContrast ? this.highContrastForeground : grey;
+                        chipFill = this.isHighContrast ? "none" : toRgba(grey, 86);
+                    } else {
+                        const delta = (totalVal - baselineTotal) / baselineTotal * 100;
+                        chipStr = (delta <= 0 ? "−" : "+") + Math.abs(delta).toFixed(0) + "%";
+                        const band = bandColor(delta <= 0 ? "success" : "danger", theme);
+                        chipInk = this.isHighContrast ? this.highContrastForeground : band;
+                        chipFill = this.isHighContrast ? "none" : toRgba(band, 85);
+                    }
+                    const chipRect = rowG.append("rect")
+                        .attr("rx", chipH / 2).attr("ry", chipH / 2).attr("fill", chipFill)
+                        .attr("stroke", this.isHighContrast ? this.highContrastForeground : "none")
+                        .attr("stroke-width", this.isHighContrast ? 1 : 0);
+                    const chipTextEl = rowG.append("text")
+                        .attr("y", barY + barHeight / 2).attr("dy", "0.35em")
+                        .attr("font-size", "11px").style("font-weight", "700")
+                        .attr("font-family", "Segoe UI, sans-serif")
+                        .style("font-feature-settings", TABULAR_NUMS)
+                        .attr("fill", chipInk).text(chipStr);
+                    const chipTextW = (chipTextEl.node() as SVGTextElement).getBBox().width;
+                    chipTextEl.attr("x", chipX + chipPadX);
+                    chipRect.attr("x", chipX).attr("y", barY + barHeight / 2 - chipH / 2)
+                        .attr("width", chipTextW + chipPadX * 2).attr("height", chipH);
+                }
             }
 
             // Invisible hit rect for tooltip and cross-filtering
@@ -655,12 +766,9 @@ export class Visual implements IVisual {
         }
 
         // Axis titles (X = time values, Y = categories) — degraded
-        // (hidden) before the title as the tile shrinks (§7).
-        // Adapted flat category-label colour for the axis titles + legend
-        // (same D-16 sweep as the per-row labels above — they were invisible on
-        // dark otherwise).
-        const catFlatColor = (s.categoryColor.value.value === "#130064" && theme === "dark")
-            ? surfaceTokens("dark").text : s.categoryColor.value.value;
+        // (hidden) before the title as the tile shrinks (§7). catFlatColor
+        // (the D-16-adapted flat category colour, shared with the legend) is
+        // computed once near the top of render().
         const axisS = this.formattingSettings.axisSettingsCard;
         const showAxisTitles = axisS.showAxisTitles.value && !degradeLabels;
         const xAxisTitle = axisS.xAxisTitle.value || "";
@@ -673,17 +781,22 @@ export class Visual implements IVisual {
             // unchanged from pre-plan behaviour.
             const titleColor = this.isHighContrast ? this.highContrastForeground : catFlatColor;
             if (xAxisTitle) {
+                // Clear gap below the tick numbers. (The legacy
+                // `showLegendResolved ? 0 : 8` offset assumed the legend sat
+                // here; it's now at the top, which left the title snug on the
+                // ticks.)
+                const xTitleY = yOffset + 12 + axisTitleFontSize;
                 this.container.append("text")
                     .classed("axis-title x-axis-title", true)
                     .attr("x", margin.left + trackWidth / 2)
-                    .attr("y", yOffset + (showLegendResolved ? 0 : 8))
+                    .attr("y", xTitleY)
                     .attr("text-anchor", "middle")
                     .attr("font-size", axisTitleFontSize + "px")
                     .attr("font-weight", "600")
                     .attr("fill", titleColor)
                     .attr("font-family", "Segoe UI, sans-serif")
                     .text(xAxisTitle);
-                yOffset += axisTitleFontSize + 6;
+                yOffset = xTitleY + 6;
             }
             if (yAxisTitle) {
                 const chartMidY = margin.top + (yOffset - margin.top) / 2;
@@ -701,43 +814,6 @@ export class Visual implements IVisual {
             }
         }
 
-        // Legend
-        if (showLegendResolved) {
-            const usedSegments = new Set<number>();
-            data.rows.forEach(row => row.segments.forEach(seg => usedSegments.add(seg.roleIndex)));
-
-            const legendG = this.container.append("g")
-                .attr("transform", `translate(${margin.left}, ${yOffset})`);
-
-            let lx = 0;
-            usedSegments.forEach((idx) => {
-                const cfg = segmentConfigs[idx];
-                if (!cfg) return;
-
-                legendG.append("rect")
-                    .attr("x", lx)
-                    .attr("y", 0)
-                    .attr("width", 10)
-                    .attr("height", 10)
-                    .attr("rx", 2)
-                    .attr("fill", cfg.color)
-                    .attr("opacity", opacity);
-
-                // Legend swatches are out of this plan's per-surface scope —
-                // kept on the static Category Label Colour swatch, unchanged.
-                const label = legendG.append("text")
-                    .attr("x", lx + 14)
-                    .attr("y", 5)
-                    .attr("dy", "0.35em")
-                    .attr("font-size", "10px")
-                    .attr("font-family", "Segoe UI, sans-serif")
-                    .attr("fill", this.isHighContrast ? this.highContrastForeground : catFlatColor)
-                    .text(cfg.label);
-
-                const bbox = (label.node() as SVGTextElement).getBBox();
-                lx += 14 + bbox.width + 16;
-            });
-        }
         return yOffset;
     }
 

@@ -1,5 +1,7 @@
 import { formattingSettings } from "powerbi-visuals-utils-formattingmodel";
 import FormattingSettingsCard = formattingSettings.SimpleCard;
+import FormattingSettingsCompositeCard = formattingSettings.CompositeCard;
+import FormattingSettingsGroup = formattingSettings.Group;
 import FormattingSettingsSlice = formattingSettings.Slice;
 import FormattingSettingsModel = formattingSettings.Model;
 
@@ -16,7 +18,7 @@ const ConstantOrRule = powerbi.VisualEnumerationInstanceKinds.ConstantOrRule;
 // (stable import path).
 export { TitleSettings, alignSlice, alignSelfFor, textAlignFor };
 
-export class TimeBreakdownSettings extends FormattingSettingsCard {
+export class TimeBreakdownSettings extends FormattingSettingsCompositeCard {
     name = "timeBreakdownStyle";
     displayName = "Time Breakdown";
 
@@ -134,6 +136,15 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         value: true,
     });
 
+    // Board Total · Δ: a delta pill after each row's total showing its %
+    // difference from the FIRST row (baseline) — lime = less time (saved),
+    // magenta = more (added), grey = baseline.
+    showDeltaChip = new formattingSettings.ToggleSwitch({
+        name: "showDeltaChip",
+        displayName: "Show delta chip",
+        value: true,
+    });
+
     valueUnit = new formattingSettings.TextInput({
         name: "valueUnit",
         displayName: "Value unit",
@@ -147,6 +158,10 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
         value: true,
     });
 
+    // Legend justification — left (default, preserves prior behaviour) /
+    // centre / right, via the shared native alignment control.
+    legendAlign = Object.assign(alignSlice("legendAlign", "left"), { displayName: "Legend alignment" });
+
     // Category label text — FontControl composite reuses the existing
     // "categoryFontSize" property name (D-06/D-07: additive-only, no schema
     // rename) alongside NEW sibling properties (family/bold/italic/
@@ -159,7 +174,7 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
     categoryBold = this.categoryFontBundle.bold;
     categoryItalic = this.categoryFontBundle.italic;
     categoryUnderline = this.categoryFontBundle.underline;
-    categoryFont = this.categoryFontBundle.control;
+    categoryFont = Object.assign(this.categoryFontBundle.control, { displayName: "Category label font" });
 
     // Segment label/value text — reuses "valueFontSize"; bold defaults
     // false (off-state renders the pre-existing hardcoded font-weight:500).
@@ -169,7 +184,7 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
     valueBold = this.valueFontBundle.bold;
     valueItalic = this.valueFontBundle.italic;
     valueUnderline = this.valueFontBundle.underline;
-    valueFont = this.valueFontBundle.control;
+    valueFont = Object.assign(this.valueFontBundle.control, { displayName: "Segment label font" });
 
     segmentOpacity = new formattingSettings.NumUpDown({
         name: "segmentOpacity",
@@ -195,30 +210,52 @@ export class TimeBreakdownSettings extends FormattingSettingsCard {
     totalBold = this.totalFontBundle.bold;
     totalItalic = this.totalFontBundle.italic;
     totalUnderline = this.totalFontBundle.underline;
-    totalFont = this.totalFontBundle.control;
+    totalFont = Object.assign(this.totalFontBundle.control, { displayName: "Total label font" });
 
-    slices: FormattingSettingsSlice[] = [
-        this.barHeight,
-        this.barRadius,
-        this.rowSpacing,
-        this.segment1Color,
-        this.segment1Label,
-        this.segment2Color,
-        this.segment2Label,
-        this.segment3Color,
-        this.segment3Label,
-        this.totalColor,
-        this.deadTimeSegment,
-        this.showSegmentLabels,
-        this.showSegmentValues,
-        this.showTotalLabel,
-        this.valueUnit,
-        this.showLegend,
-        this.categoryFont,
-        this.categoryColor,
-        this.valueFont,
-        this.totalFont,
-        this.segmentOpacity,
+    // Collapsible pane groups (pane-only — CardGroupEntity names do NOT map to
+    // capabilities objects, so every slice still lives under the locked
+    // `timeBreakdownStyle` object; saved reports + fx wiring are unchanged).
+    // Declutters the previously-flat ~23-control card.
+    groups: FormattingSettingsGroup[] = [
+        new FormattingSettingsGroup({
+            name: "tbBars",
+            displayName: "Bars",
+            collapsible: true,
+            slices: [this.barHeight, this.barRadius, this.rowSpacing, this.segmentOpacity],
+        }),
+        new FormattingSettingsGroup({
+            name: "tbSegments",
+            displayName: "Segments",
+            collapsible: true,
+            slices: [
+                this.segment1Color, this.segment1Label,
+                this.segment2Color, this.segment2Label,
+                this.segment3Color, this.segment3Label,
+                this.deadTimeSegment,
+            ],
+        }),
+        new FormattingSettingsGroup({
+            name: "tbLabels",
+            displayName: "Category & values",
+            collapsible: true,
+            slices: [
+                this.categoryColor, this.categoryFont,
+                this.showSegmentLabels, this.showSegmentValues,
+                this.valueUnit, this.valueFont,
+            ],
+        }),
+        new FormattingSettingsGroup({
+            name: "tbTotals",
+            displayName: "Total & delta",
+            collapsible: true,
+            slices: [this.showTotalLabel, this.totalColor, this.totalFont, this.showDeltaChip],
+        }),
+        new FormattingSettingsGroup({
+            name: "tbLegend",
+            displayName: "Legend",
+            collapsible: true,
+            slices: [this.showLegend, this.legendAlign],
+        }),
     ];
 }
 

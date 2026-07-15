@@ -218,6 +218,20 @@
           },
           "displayName": "Show Legend"
         },
+        "legendAlign": {
+          "displayName": "Legend alignment",
+          "type": {
+            "formatting": {
+              "alignment": true
+            }
+          }
+        },
+        "showDeltaChip": {
+          "type": {
+            "bool": true
+          },
+          "displayName": "Show Delta Chip"
+        },
         "categoryFontFamily": {
           "type": {
             "formatting": {
