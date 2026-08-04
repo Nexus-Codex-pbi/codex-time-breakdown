@@ -36,6 +36,7 @@ import { settle, MOTION_MAX_MS } from "./shared/motion";
 import { applyHighContrast } from "./shared/highContrast";
 
 import * as d3 from "d3";
+import { LicenseGate } from "./shared/licensing";
 
 /** Luminance-based theme pick (matches the pbiNowVsThen/pbiKpiCard v3
  * pilots' own convention) — only trusts bgHex as a real signal when the
@@ -110,7 +111,22 @@ export class Visual implements IVisual {
     // doesn't replay the settle animation on every update.
     private lastTotalByCategory: Map<string, string> = new Map();
 
+    private licenseGate: LicenseGate;
+
+    private lastUpdateOptions: VisualUpdateOptions | null = null;
+
+
     constructor(options: VisualConstructorOptions) {
+
+        // NO FREE TIER — an unlicensed user gets the whole visual blocked.
+
+        // The check is async, so re-run the last update once it resolves.
+
+        this.licenseGate = new LicenseGate(options.host, () => {
+
+            if (this.lastUpdateOptions) this.update(this.lastUpdateOptions);
+
+        });
         this.host = options.host;
         this.target = options.element;
         this.events = options.host.eventService;
@@ -173,6 +189,14 @@ export class Visual implements IVisual {
 
     public update(options: VisualUpdateOptions): void {
         this.events.renderingStarted(options);
+        this.lastUpdateOptions = options;
+
+        if (this.licenseGate.blockedThisFrame()) {
+            this.target.style.display = "none";
+            this.events.renderingFinished(options);
+            return;
+        }
+        this.target.style.display = "";
         try {
             // High contrast detection
             const colorPalette = this.host.colorPalette as any;
