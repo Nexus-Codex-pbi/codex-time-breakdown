@@ -18,6 +18,22 @@ export interface TimeBreakdownData {
     maxTotal: number;
 }
 
+/**
+ *  1180.2.4 Data Types — blank and non-numeric input must never become a measured
+ *  value, and `||` must never swallow a legitimate zero. The previous
+ *  `Number(raw) || 0` / `Number(raw) || null` form was saved for a NUMERIC zero by
+ *  its `typeof raw === "number"` branch, but a STRING "0" still collapsed to null —
+ *  which silently replaced an explicit total of zero with the segment sum, and sorted
+ *  a row whose sort order was "0" to the very end. The reviewer's test model includes
+ *  a String values table, so that path is exercised.
+ */
+function asNumberOrNull(raw: unknown): number | null {
+    if (raw === null || raw === undefined) return null;
+    if (typeof raw === "string" && raw.trim() === "") return null;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) ? n : null;
+}
+
 export function parseDataView(dv: DataView): TimeBreakdownData | null {
     if (!dv?.categorical?.categories?.[0]?.values?.length) return null;
 
@@ -45,8 +61,9 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
             const role = `segment${s + 1}`;
             if (roleMap[role] !== undefined) {
                 const raw = vals[roleMap[role]].values[r];
-                const v = typeof raw === "number" ? raw : Number(raw) || 0;
-                if (v > 0) {
+                // 1180.2.4: blank/non-numeric is absent data, not a zero-length segment.
+                const v = asNumberOrNull(raw);
+                if (v !== null && v > 0) {
                     segments.push({ value: v, roleIndex: s });
                     segmentSum += v;
                 }
@@ -57,14 +74,14 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
         let total: number | null = null;
         if (roleMap["totalValue"] !== undefined) {
             const raw = vals[roleMap["totalValue"]].values[r];
-            total = typeof raw === "number" ? raw : Number(raw) || null;
+            total = asNumberOrNull(raw);   // 1180.2.4: keeps an explicit total of 0
         }
 
         // Sort order
         let sortOrder: number | null = null;
         if (roleMap["sortOrder"] !== undefined) {
             const raw = vals[roleMap["sortOrder"]].values[r];
-            sortOrder = typeof raw === "number" ? raw : Number(raw) || null;
+            sortOrder = asNumberOrNull(raw);   // 1180.2.4: keeps sort order 0 first
         }
 
         const effectiveTotal = total ?? segmentSum;
