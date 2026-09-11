@@ -719,13 +719,13 @@ export class Visual implements IVisual {
                     const chipX = (xPos + 8) + totalW + 6;
                     const chipH = 16, chipPadX = 6;
                     let chipStr: string, chipInk: string, chipFill: string;
-                    if (rowIndex === 0 || !hasBaseline) {
-                        chipStr = "baseline";
+                    const delta = hasBaseline ? (totalVal - baselineTotal) / baselineTotal * 100 : null;
+                    if (rowIndex === 0 || delta === null || Math.round(delta) === 0) {
+                        chipStr = rowIndex === 0 ? "baseline" : delta === null ? "N/A" : "0%";
                         const grey = surfaceTokens(theme).muted;
                         chipInk = this.isHighContrast ? this.highContrastForeground : grey;
                         chipFill = this.isHighContrast ? "none" : toRgba(grey, 86);
                     } else {
-                        const delta = (totalVal - baselineTotal) / baselineTotal * 100;
                         chipStr = (delta <= 0 ? "−" : "+") + Math.abs(delta).toFixed(0) + "%";
                         const band = bandColor(delta <= 0 ? "success" : "danger", theme);
                         chipInk = this.isHighContrast ? this.highContrastForeground : band;
