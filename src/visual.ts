@@ -77,7 +77,7 @@ export class Visual implements IVisual {
     private borderRect: d3.Selection<SVGRectElement, unknown, null, undefined>;
     private titleEl: d3.Selection<SVGTextElement, unknown, null, undefined>;
     private container: d3.Selection<SVGGElement, unknown, null, undefined>;
-    private formattingSettings: VisualFormattingSettingsModel;
+    private formattingSettings: VisualFormattingSettingsModel = new VisualFormattingSettingsModel();
     private formattingSettingsService: FormattingSettingsService;
     private events: IVisualEventService;
     private selectionManager: ISelectionManager;
