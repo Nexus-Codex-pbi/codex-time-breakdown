@@ -77,6 +77,7 @@ The visual provides the following format pane cards:
    - Hover to see a tooltip with category, segment values, and total
 
 ## Limitations
+- An explicit Total is an independent end label. The shared scale covers both that value and the segment sum. When they differ, `!` marks the total and the tooltip reports both values; neither input is silently replaced.
 - The visual expects numeric values for segment measures and total. A blank or non-numeric reading is treated as **absent, not as zero** — it draws no segment, and a row with no readable duration shows `—` in place of a total instead of an asserted `0`.
 - A negative duration cannot be drawn as a length: the segment is not drawn, and that row's derived total is reported as `—` rather than silently summing the remaining segments. Bind an explicit Total measure to state the total yourself.
 - Values are displayed with the precision their own model format string allows (a measure formatted `0.00` keeps its decimals; whole numbers stay whole). The Value Unit suffix is a separate manual string.

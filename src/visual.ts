@@ -684,7 +684,7 @@ export class Visual implements IVisual {
                 const totalVal = row.total ?? row.derivedTotal;
                 const hasTotal = totalVal !== null && Number.isFinite(totalVal);
                 const totalText = hasTotal
-                    ? `${this.formatDuration(totalVal, data.totalFormat)} ${unit}`
+                    ? `${this.formatDuration(totalVal, data.totalFormat)} ${unit}${row.totalMismatch ? " !" : ""}`
                     : NO_VALUE;
                 const totalEl = rowG.append("text")
                     .attr("x", xPos + 8)
@@ -777,6 +777,12 @@ export class Visual implements IVisual {
                     ? `${this.formatDuration(tooltipTotal, data.totalFormat)}${unit}`
                     : NO_VALUE
             });
+            if (row.totalMismatch) {
+                tooltipItems.push({
+                    displayName: "Data quality",
+                    value: `Total ${this.formatDuration(row.total, data.totalFormat)}${unit} differs from segment sum ${this.formatDuration(row.derivedTotal, data.totalFormat)}${unit}.`,
+                });
+            }
 
             const hitNode = hitRect.node() as SVGRectElement;
             hitNode.addEventListener("mousemove", (e: MouseEvent) => {

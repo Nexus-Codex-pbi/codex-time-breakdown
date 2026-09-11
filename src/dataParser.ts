@@ -29,6 +29,7 @@ export interface TimeBreakdownRow {
      *  An observed zero is a reading, so an all-zero row still derives 0.
      */
     derivedTotal: number | null;
+    totalMismatch: boolean;
     sortOrder: number | null;
 }
 
@@ -148,6 +149,8 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
             segments,
             total,
             derivedTotal,
+            totalMismatch: total !== null && derivedTotal !== null
+                && Math.abs(total - derivedTotal) > Math.max(1, Math.abs(total), derivedTotal) * 1e-9,
             sortOrder,
         });
     }
