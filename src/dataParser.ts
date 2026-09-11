@@ -54,6 +54,7 @@ export interface TimeBreakdownData {
  */
 function asNumberOrNull(raw: unknown): number | null {
     if (raw === null || raw === undefined) return null;
+    if (typeof raw !== "number" && typeof raw !== "string") return null;
     if (typeof raw === "string" && raw.trim() === "") return null;
     const n = typeof raw === "number" ? raw : Number(raw);
     return Number.isFinite(n) ? n : null;
@@ -68,10 +69,9 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
     // Map role names to value column indices
     const roleMap: Record<string, number> = {};
     for (let i = 0; i < vals.length; i++) {
-        const roleName = vals[i].source.roles
-            ? Object.keys(vals[i].source.roles)[0]
-            : "";
-        roleMap[roleName] = i;
+        for (const [role, bound] of Object.entries(vals[i].source.roles ?? {})) {
+            if (bound) roleMap[role] = i;
+        }
     }
 
     const formatOf = (columnIndex: number): string | null =>
@@ -166,9 +166,9 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
     const hasSortOrder = rows.some(r => r.sortOrder !== null);
     if (hasSortOrder) {
         rows.sort((a, b) => {
-            const aVal = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
-            const bVal = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
-            return aVal - bVal;
+            if (a.sortOrder === null) return b.sortOrder === null ? 0 : 1;
+            if (b.sortOrder === null) return -1;
+            return a.sortOrder - b.sortOrder;
         });
     }
 

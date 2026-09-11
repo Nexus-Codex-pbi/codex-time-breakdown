@@ -83,6 +83,7 @@ The visual provides the following format pane cards:
 - Values and tooltips honour each measure's model format, including required/optional decimals, currency and percentages. `0.00` displays two decimal places even for whole numbers. Tick precision also distinguishes adjacent positions. The Value Unit suffix is a separate manual string.
 - If no segment measures are bound, rows still render from the Category and Total fields with no bars. The visual shows its empty state when no category field is bound, or when the dataset has no rows.
 - The sort order field, if bound, must be numeric and determines ascending row order.
+- Missing sort values follow every finite sort value. Numeric strings remain accepted; booleans are not duration or sort readings. Role bindings use their true flags, not object-key order.
 - Each data role accepts only one field.
 - The visual uses a scrollbar when the total content height exceeds the container height.
 - End-label space is measured before scaling all rows. On narrow tiles totals move below the bars; long text is fitted with a full-text hover title. Legend items wrap and non-fitting callouts stay in the row tooltip.
