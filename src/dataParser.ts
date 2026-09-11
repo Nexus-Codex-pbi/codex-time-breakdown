@@ -12,6 +12,7 @@ export interface SegmentData {
 
 export interface TimeBreakdownRow {
     category: string;
+    categoryIndex: number;
     segments: SegmentData[];
     /** The explicit Total measure. null when the role is unbound, blank or
      *  non-numeric — never a substituted zero. */
@@ -143,6 +144,7 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
 
         rows.push({
             category: String(cats[r] ?? ""),
+            categoryIndex: r,
             segments,
             total,
             derivedTotal,

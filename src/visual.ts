@@ -561,7 +561,9 @@ export class Visual implements IVisual {
 
         // Rows
         data.rows.forEach((row: TimeBreakdownRow, rowIndex: number) => {
+            const identity = this.rowSelectionIds[row.categoryIndex];
             const rowG = this.container.append("g")
+                .attr("data-key", identity?.getKey() ?? "")
                 .attr("transform", `translate(${margin.left}, ${yOffset})`);
 
             // Per-row Total Colour resolution (TRANS-04 fx): reads the
@@ -569,7 +571,7 @@ export class Visual implements IVisual {
             // ColorHelper.getColorForMeasure path against this row's own
             // per-instance object overrides, falling back to the static
             // format-pane value otherwise.
-            const instanceObjects = this.categoricalCategories?.objects?.[rowIndex];
+            const instanceObjects = this.categoricalCategories?.objects?.[row.categoryIndex];
             let resolvedTotalColor = this.totalColorHelper?.getColorForMeasure(instanceObjects, "totalColor") ?? totalColorDefault;
             // D-16 adaptive: the untouched dark-navy default swaps to the light
             // text token on dark surfaces (total value was invisible on dark —
@@ -697,12 +699,13 @@ export class Visual implements IVisual {
                     .attr("fill", totalColor)
                     .text(totalText);
 
-                if (this.lastTotalByCategory.get(row.category) !== totalText) {
+                const animationKey = identity?.getKey() ?? row.category;
+                if (this.lastTotalByCategory.get(animationKey) !== totalText) {
                     settle(totalEl.node() as unknown as SVGElement, [
                         { opacity: 0.35, transform: "translateY(2px)" },
                         { opacity: 1, transform: "translateY(0)" },
                     ], { duration: Math.min(200, MOTION_MAX_MS) });
-                    this.lastTotalByCategory.set(row.category, totalText);
+                    this.lastTotalByCategory.set(animationKey, totalText);
                 }
 
                 // Δ delta chip (board Total · Δ): pill after the total showing
@@ -781,15 +784,15 @@ export class Visual implements IVisual {
                     coordinates: [e.clientX, e.clientY],
                     isTouchEvent: false,
                     dataItems: tooltipItems,
-                    identities: this.rowSelectionIds[rowIndex] ? [this.rowSelectionIds[rowIndex]] : []
+                    identities: identity ? [identity] : []
                 });
             });
             hitNode.addEventListener("mouseleave", () => {
                 this.tooltipService.hide({ isTouchEvent: false, immediately: false });
             });
             hitNode.addEventListener("click", (e: MouseEvent) => {
-                if (this.rowSelectionIds[rowIndex]) {
-                    this.selectionManager.select(this.rowSelectionIds[rowIndex], e.ctrlKey || e.metaKey);
+                if (identity) {
+                    this.selectionManager.select(identity, e.ctrlKey || e.metaKey);
                 }
                 e.stopPropagation();
             });
