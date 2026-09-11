@@ -94,6 +94,7 @@ export class Visual implements IVisual {
     private totalColorHelper: ColorHelper | null = null;
     // Conditional formatting (fx) state — Category label colour (TEXT-02).
     private categoryColorHelper: ColorHelper | null = null;
+    private segmentColorHelpers: ColorHelper[] = [];
 
     // v3 card signature — one accent-tinted corner-bracket pair for the
     // whole card (a multi-row list visual, like Progress Bar Card/Now vs
@@ -300,6 +301,14 @@ export class Visual implements IVisual {
                 { objectName: "timeBreakdownStyle", propertyName: "categoryColor" },
                 s.categoryColor.value.value
             );
+            this.segmentColorHelpers = [s.segment1Color, s.segment2Color, s.segment3Color].map((slice, index) => {
+                slice.selector = dataViewWildcard.createDataViewWildcardSelector(
+                    dataViewWildcard.DataViewWildcardMatchingOption.InstancesAndTotals
+                );
+                slice.altConstantSelector = undefined;
+                return new ColorHelper(this.host.colorPalette,
+                    { objectName: "timeBreakdownStyle", propertyName: `segment${index + 1}Color` }, slice.value.value);
+            });
 
             const w = Math.max(0, options.viewport.width);
             const h = Math.max(0, options.viewport.height);
@@ -409,7 +418,7 @@ export class Visual implements IVisual {
 
         const totalFontSize = Math.max(1, s.totalFontSize.value);
         const totalFontFamily = s.totalFontFamily.value || "Segoe UI, sans-serif";
-        const totalWeight = weightFor(s.totalBold.value, "700");
+        const totalWeight = weightFor(s.totalBold.value, "400");
         const totalStyle = s.totalItalic.value ? "italic" : "normal";
         const totalDecoration = s.totalUnderline.value ? "underline" : "none";
         const measure = (text: string, size: number, family: string, weight: string, style = "normal"): number => {
@@ -647,7 +656,13 @@ export class Visual implements IVisual {
             // a smaller LED radius on every inner-adjacent edge (§5).
             row.segments.forEach((seg, segIdx) => {
                 const segW = (seg.value / maxTotal) * trackWidth;
-                const cfg = segmentConfigs[seg.roleIndex] || segmentConfigs[0];
+                const baseConfig = segmentConfigs[seg.roleIndex] || segmentConfigs[0];
+                const cfg = {
+                    ...baseConfig,
+                    color: this.isHighContrast ? this.highContrastForeground
+                        : deadTimeIndex === seg.roleIndex ? deadTimeGrey
+                        : this.segmentColorHelpers[seg.roleIndex]?.getColorForMeasure(instanceObjects, `segment${seg.roleIndex + 1}Color`) ?? baseConfig.color,
+                };
                 const isFirst = segIdx === 0;
                 const isLast = segIdx === row.segments.length - 1;
                 const rLeft = isFirst ? barRadius : ledInnerRadius;
