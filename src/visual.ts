@@ -366,10 +366,15 @@ export class Visual implements IVisual {
     private applySelection(ids = this.selectionManager.getSelectionIds()): void {
         if (this.destroyed) return;
         const keys = new Set(ids.map(id => (id as ISelectionId).getKey()));
+        const hc = this.isHighContrast;
+        const selectedInk = (this.host.colorPalette as any).foregroundSelected?.value ?? this.highContrastForeground;
         this.container?.selectAll<SVGGElement, unknown>("g[data-key]").each(function() {
             const selected = keys.has(this.getAttribute("data-key"));
-            d3.select(this).style("opacity", keys.size === 0 || selected ? 1 : 0.35)
+            d3.select(this).style("opacity", hc || keys.size === 0 || selected ? 1 : 0.35)
                 .attr("aria-selected", String(selected));
+            d3.select(this).select(".time-breakdown-hit")
+                .attr("stroke", hc && selected ? selectedInk : "none")
+                .attr("stroke-width", hc && selected ? 1 : 0);
         });
     }
 
