@@ -19,6 +19,7 @@ import { ColorHelper } from "powerbi-visuals-utils-colorutils";
 import { VisualFormattingSettingsModel, TimeBreakdownSettings, AxisSettingsCard, textAlignFor } from "./settings";
 import { parseDataView, TimeBreakdownData, TimeBreakdownRow } from "./dataParser";
 import { toRgba } from "./shared/colorHelpers";
+import { fractionDigitsFor } from "./shared/numberFormat";
 
 // v3 appearance engine (frozen, 01-15) — accent token, dim-theme
 // surfaces, the corner-bracket card signature, the capped/reduced-
@@ -631,7 +632,7 @@ export class Visual implements IVisual {
                 if ((showLabel || showValue) && segW > 30) {
                     const parts: string[] = [];
                     if (showLabel) parts.push(cfg.label);
-                    if (showValue) parts.push(`${Math.round(seg.value)}${unit}`);
+                    if (showValue) parts.push(`${this.formatDuration(seg.value, seg.format)}${unit}`);
                     const labelText = parts.join(" ");
                     rowG.append("text")
                         .attr("x", xPos + segW / 2)
@@ -650,7 +651,7 @@ export class Visual implements IVisual {
                     // Too narrow — place above
                     const parts: string[] = [];
                     if (showLabel) parts.push(cfg.label);
-                    if (showValue) parts.push(`${Math.round(seg.value)}${unit}`);
+                    if (showValue) parts.push(`${this.formatDuration(seg.value, seg.format)}${unit}`);
                     const labelText = parts.join(" ");
                     rowG.append("text")
                         .attr("x", xPos + segW / 2)
@@ -674,13 +675,15 @@ export class Visual implements IVisual {
             // capped at MOTION_MAX_MS and skipped under
             // prefers-reduced-motion internally.
             if (s.showTotalLabel.value) {
-                // §3: an explicit total wins; otherwise the row's own derived
+                // §3/§4: an explicit total wins; otherwise the row's own derived
                 // total, which is null when the row has no assertable duration
                 // (all blank, no measures bound, or a rejected negative reading)
                 // — that renders the no-value dash, never "0 min".
                 const totalVal = row.total ?? row.derivedTotal;
                 const hasTotal = totalVal !== null && Number.isFinite(totalVal);
-                const totalText = hasTotal ? `${Math.round(totalVal)} ${unit}` : NO_VALUE;
+                const totalText = hasTotal
+                    ? `${this.formatDuration(totalVal, data.totalFormat)} ${unit}`
+                    : NO_VALUE;
                 const totalEl = rowG.append("text")
                     .attr("x", xPos + 8)
                     .attr("y", barY + barHeight / 2)
@@ -758,16 +761,17 @@ export class Visual implements IVisual {
                 const cfg = segmentConfigs[seg.roleIndex] || segmentConfigs[0];
                 tooltipItems.push({
                     displayName: cfg.label,
-                    value: `${Math.round(seg.value)}${unit}`
+                    value: `${this.formatDuration(seg.value, seg.format)}${unit}`
                 });
             });
-            // Same total contract as the rendered label above (§3): the tooltip
-            // must not report a total the row never had.
+            // Same total contract as the rendered label above (§3/§4): the
+            // tooltip must not repeat a rounding the label no longer does, nor
+            // report a total the row never had.
             const tooltipTotal = row.total ?? row.derivedTotal;
             tooltipItems.push({
                 displayName: "Total",
                 value: tooltipTotal !== null && Number.isFinite(tooltipTotal)
-                    ? `${Math.round(tooltipTotal)}${unit}`
+                    ? `${this.formatDuration(tooltipTotal, data.totalFormat)}${unit}`
                     : NO_VALUE
             });
 
@@ -801,6 +805,10 @@ export class Visual implements IVisual {
             const mag = Math.pow(10, Math.floor(Math.log10(rawStep) || 0));
             const norm = rawStep / mag;
             const niceStep = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+            // §4: decimals the STEP needs. Rounding every tick to a whole number
+            // turned a 0.1-minute step into "0,0,0,0,0,1,1" — seven labels, two
+            // distinct values, none of them the position they marked.
+            const tickDecimals = Math.max(0, Math.min(6, Math.ceil(-Math.log10(niceStep))));
             const tickColor = this.isHighContrast ? this.highContrastForeground : surfaceTokens(theme).muted;
             const tickY = yOffset + 12;
             for (let v = 0; v <= maxTotal + niceStep * 0.001; v += niceStep) {
@@ -811,7 +819,7 @@ export class Visual implements IVisual {
                     .attr("font-size", "10px")
                     .attr("font-family", "Segoe UI, sans-serif")
                     .attr("fill", tickColor)
-                    .text(String(Math.round(v)));
+                    .text(this.formatTick(v, tickDecimals));
             }
             yOffset += 20;
         }
@@ -866,6 +874,48 @@ export class Visual implements IVisual {
         }
 
         return yOffset;
+    }
+
+    /**
+     *  Duration -> label text (NEXUS cycle-13 §4).
+     *
+     *  Every reading used to go through `Math.round`, so 0.1/0.2/0.3 minutes
+     *  all printed "0min" and a 7.05-minute total printed "7 min" — the model's
+     *  own `0.00` format was ignored and there was no precision lever anywhere.
+     *  `fractionDigitsFor` (shared/numberFormat.ts) reads the format's REQUIRED
+     *  (`0`) and OPTIONAL (`#`) fraction digits; this applies the MAXIMUM with a
+     *  minimum of 0, which is the narrowest change that restores the lost
+     *  precision: a fractional duration keeps its digits, while an integer
+     *  duration renders exactly as it did before ("33", not "33.00"), so no
+     *  saved report's whole-minute labels move. Grouping comes from
+     *  toLocaleString, which is what turns the unreadable "7037034" into
+     *  "7,037,034".
+     *
+     *  The Value Unit suffix is deliberately NOT part of this: it is a manual
+     *  string the user types, appended by the caller, never a number format.
+     */
+    private formatDuration(value: number, format: string | null | undefined): string {
+        if (!Number.isFinite(value)) return NO_VALUE;
+        const locale = this.host?.locale || undefined;
+        // No model format: plain locale rendering (toLocaleString's own default
+        // of up to 3 fraction digits), matching shared formatModelNumber's
+        // no-format branch — still never a silent round to whole minutes.
+        if (!format) return value.toLocaleString(locale);
+        const { max } = fractionDigitsFor(format);
+        return value.toLocaleString(locale, {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: Math.max(0, Math.min(20, max)),
+        });
+    }
+
+    /** Axis tick label — fixed decimals derived from the tick STEP, not the
+     *  model format, so a 0.1-minute step reads 0.0 · 0.1 · 0.2 … instead of the
+     *  seven rounded, repeated "0,0,0,0,0,1,1" labels (NEXUS cycle-13 §4). */
+    private formatTick(value: number, decimals: number): string {
+        return value.toLocaleString(this.host?.locale || undefined, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        });
     }
 
     private contrastText(bgHex: string): string {

@@ -4,6 +4,10 @@ import DataView = powerbi.DataView;
 export interface SegmentData {
     value: number;
     roleIndex: number; // 0-based segment index
+    /** The measure column's own Power BI model format string ("0.00", "#,##0.##"),
+     *  carried so the renderer can honour its precision instead of rounding
+     *  every duration to a whole number (NEXUS cycle-13 §4). */
+    format: string | null;
 }
 
 export interface TimeBreakdownRow {
@@ -30,6 +34,9 @@ export interface TimeBreakdownRow {
 export interface TimeBreakdownData {
     rows: TimeBreakdownRow[];
     maxTotal: number;
+    /** Model format string for total values (the Total measure's own, falling
+     *  back to the first bound segment measure's). NEXUS cycle-13 §4. */
+    totalFormat: string | null;
 }
 
 /**
@@ -63,6 +70,19 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
         roleMap[roleName] = i;
     }
 
+    const formatOf = (columnIndex: number): string | null =>
+        (columnIndex !== undefined && vals[columnIndex]?.source?.format) || null;
+
+    // Total values carry the Total measure's own model format; when that role is
+    // unbound the derived total is a sum of segments, so the first bound segment
+    // measure's format describes it (NEXUS cycle-13 §4).
+    const firstSegmentColumn = ["segment1", "segment2", "segment3"]
+        .map(role => roleMap[role])
+        .find(index => index !== undefined);
+    const totalFormat = roleMap["totalValue"] !== undefined
+        ? formatOf(roleMap["totalValue"])
+        : formatOf(firstSegmentColumn);
+
     const rows: TimeBreakdownRow[] = [];
     let maxTotal = 0;
 
@@ -87,7 +107,7 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
                 segmentSum += v;
                 // A zero-length segment draws nothing (unchanged behaviour); it
                 // still counts as an observed reading for the derived total.
-                if (v > 0) segments.push({ value: v, roleIndex: s });
+                if (v > 0) segments.push({ value: v, roleIndex: s, format: formatOf(roleMap[role]) });
             }
         }
 
@@ -98,14 +118,14 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
             total = asNumberOrNull(raw);   // 1180.2.4: keeps an explicit total of 0
         }
 
+        const derivedTotal: number | null = sawInvalidReading || !sawReading ? null : segmentSum;
+
         // Sort order
         let sortOrder: number | null = null;
         if (roleMap["sortOrder"] !== undefined) {
             const raw = vals[roleMap["sortOrder"]].values[r];
             sortOrder = asNumberOrNull(raw);   // 1180.2.4: keeps sort order 0 first
         }
-
-        const derivedTotal: number | null = sawInvalidReading || !sawReading ? null : segmentSum;
 
         // ─── Shared-scale domain (NEXUS cycle-13 §2) ───────────────────────
         // The domain has to cover EVERYTHING the row draws. It previously used
@@ -140,5 +160,5 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
         });
     }
 
-    return { rows, maxTotal };
+    return { rows, maxTotal, totalFormat };
 }
