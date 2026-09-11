@@ -19,7 +19,7 @@ import { ColorHelper } from "powerbi-visuals-utils-colorutils";
 import { VisualFormattingSettingsModel, TimeBreakdownSettings, AxisSettingsCard, textAlignFor } from "./settings";
 import { parseDataView, TimeBreakdownData, TimeBreakdownRow } from "./dataParser";
 import { toRgba } from "./shared/colorHelpers";
-import { fractionDigitsFor } from "./shared/numberFormat";
+import { formatModelNumber, fractionDigitsFor } from "./shared/numberFormat";
 
 // v3 appearance engine (frozen, 01-15) — accent token, dim-theme
 // surfaces, the corner-bracket card signature, the capped/reduced-
@@ -823,7 +823,7 @@ export class Visual implements IVisual {
             // §4: decimals the STEP needs. Rounding every tick to a whole number
             // turned a 0.1-minute step into "0,0,0,0,0,1,1" — seven labels, two
             // distinct values, none of them the position they marked.
-            const tickDecimals = Math.max(0, Math.min(6, Math.ceil(-Math.log10(niceStep))));
+            const tickDecimals = Math.max(0, Math.ceil(-Math.log10(niceStep)));
             const tickColor = this.isHighContrast ? this.highContrastForeground : surfaceTokens(theme).muted;
             const tickY = yOffset + 12;
             for (let v = 0; v <= maxTotal + niceStep * 0.001; v += niceStep) {
@@ -834,7 +834,7 @@ export class Visual implements IVisual {
                     .attr("font-size", "10px")
                     .attr("font-family", "Segoe UI, sans-serif")
                     .attr("fill", tickColor)
-                    .text(this.formatTick(v, tickDecimals));
+                    .text(this.formatTick(v, tickDecimals, data.totalFormat));
             }
             yOffset += 20;
         }
@@ -891,45 +891,25 @@ export class Visual implements IVisual {
         return yOffset;
     }
 
-    /**
-     *  Duration -> label text (NEXUS cycle-13 §4).
-     *
-     *  Every reading used to go through `Math.round`, so 0.1/0.2/0.3 minutes
-     *  all printed "0min" and a 7.05-minute total printed "7 min" — the model's
-     *  own `0.00` format was ignored and there was no precision lever anywhere.
-     *  `fractionDigitsFor` (shared/numberFormat.ts) reads the format's REQUIRED
-     *  (`0`) and OPTIONAL (`#`) fraction digits; this applies the MAXIMUM with a
-     *  minimum of 0, which is the narrowest change that restores the lost
-     *  precision: a fractional duration keeps its digits, while an integer
-     *  duration renders exactly as it did before ("33", not "33.00"), so no
-     *  saved report's whole-minute labels move. Grouping comes from
-     *  toLocaleString, which is what turns the unreadable "7037034" into
-     *  "7,037,034".
-     *
-     *  The Value Unit suffix is deliberately NOT part of this: it is a manual
-     *  string the user types, appended by the caller, never a number format.
-     */
+    /** Model formatting and the author's manual time-unit suffix stay separate. */
     private formatDuration(value: number, format: string | null | undefined): string {
         if (!Number.isFinite(value)) return NO_VALUE;
-        const locale = this.host?.locale || undefined;
-        // No model format: plain locale rendering (toLocaleString's own default
-        // of up to 3 fraction digits), matching shared formatModelNumber's
-        // no-format branch — still never a silent round to whole minutes.
-        if (!format) return value.toLocaleString(locale);
-        const { max } = fractionDigitsFor(format);
-        return value.toLocaleString(locale, {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: Math.max(0, Math.min(20, max)),
-        });
+        return formatModelNumber(value, format, this.host?.locale || undefined);
     }
 
     /** Axis tick label — fixed decimals derived from the tick STEP, not the
      *  model format, so a 0.1-minute step reads 0.0 · 0.1 · 0.2 … instead of the
      *  seven rounded, repeated "0,0,0,0,0,1,1" labels (NEXUS cycle-13 §4). */
-    private formatTick(value: number, decimals: number): string {
+    private formatTick(value: number, decimals: number, format: string | null): string {
+        const precision = Math.max(fractionDigitsFor(format).min, decimals - (format?.includes("%") ? 2 : 0), 0);
+        if (precision > 20) return value.toExponential(2);
+        if (format) {
+            const tickFormat = format.replace(/([#0][,#0]*)(?:\.[0#]+)?/, "$1" + (precision ? "." + "0".repeat(precision) : ""));
+            return formatModelNumber(value, tickFormat, this.host?.locale || undefined);
+        }
         return value.toLocaleString(this.host?.locale || undefined, {
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals,
+            minimumFractionDigits: precision,
+            maximumFractionDigits: precision,
         });
     }
 
