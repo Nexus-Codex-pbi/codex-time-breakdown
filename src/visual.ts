@@ -684,8 +684,8 @@ export class Visual implements IVisual {
                 const totalVal = row.total ?? row.derivedTotal;
                 const hasTotal = totalVal !== null && Number.isFinite(totalVal);
                 const totalText = hasTotal
-                    ? `${this.formatDuration(totalVal, data.totalFormat)} ${unit}${row.totalMismatch ? " !" : ""}`
-                    : NO_VALUE;
+                    ? `${this.formatDuration(totalVal, data.totalFormat)} ${unit}${row.totalMismatch || row.invalidDuration ? " !" : ""}`
+                    : row.invalidDuration ? "Invalid duration" : NO_VALUE;
                 const totalEl = rowG.append("text")
                     .attr("x", xPos + 8)
                     .attr("y", barY + barHeight / 2)
@@ -760,7 +760,7 @@ export class Visual implements IVisual {
             const tooltipItems: VisualTooltipDataItem[] = [
                 { displayName: "Category", value: row.category }
             ];
-            row.segments.forEach((seg) => {
+            row.readings.forEach((seg) => {
                 const cfg = segmentConfigs[seg.roleIndex] || segmentConfigs[0];
                 tooltipItems.push({
                     displayName: cfg.label,
@@ -781,6 +781,12 @@ export class Visual implements IVisual {
                 tooltipItems.push({
                     displayName: "Data quality",
                     value: `Total ${this.formatDuration(row.total, data.totalFormat)}${unit} differs from segment sum ${this.formatDuration(row.derivedTotal, data.totalFormat)}${unit}.`,
+                });
+            }
+            if (row.invalidDuration) {
+                tooltipItems.push({
+                    displayName: "Data quality",
+                    value: "Negative duration: the stack is not drawn and no segment total is derived.",
                 });
             }
 

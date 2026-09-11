@@ -79,7 +79,7 @@ The visual provides the following format pane cards:
 ## Limitations
 - An explicit Total is an independent end label. The shared scale covers both that value and the segment sum. When they differ, `!` marks the total and the tooltip reports both values; neither input is silently replaced.
 - The visual expects numeric values for segment measures and total. A blank or non-numeric reading is treated as **absent, not as zero** — it draws no segment, and a row with no readable duration shows `—` in place of a total instead of an asserted `0`.
-- A negative duration cannot be drawn as a length: the segment is not drawn, and that row's derived total is reported as `—` rather than silently summing the remaining segments. Bind an explicit Total measure to state the total yourself.
+- A negative duration invalidates the row's stack: no partial stack or segment total is drawn. The total area reports `Invalid duration`, or marks an independently bound Total with `!`. Tooltips retain all numeric readings, including zero and negative values, and explain the invalid stack.
 - Values are displayed with the precision their own model format string allows (a measure formatted `0.00` keeps its decimals; whole numbers stay whole). The Value Unit suffix is a separate manual string.
 - If no segment measures are bound, rows still render from the Category and Total fields with no bars. The visual shows its empty state when no category field is bound, or when the dataset has no rows.
 - The sort order field, if bound, must be numeric and determines ascending row order.

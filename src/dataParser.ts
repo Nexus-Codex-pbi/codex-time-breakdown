@@ -14,6 +14,8 @@ export interface TimeBreakdownRow {
     category: string;
     categoryIndex: number;
     segments: SegmentData[];
+    readings: SegmentData[];
+    invalidDuration: boolean;
     /** The explicit Total measure. null when the role is unbound, blank or
      *  non-numeric — never a substituted zero. */
     total: number | null;
@@ -90,6 +92,7 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
 
     for (let r = 0; r < cats.length; r++) {
         const segments: SegmentData[] = [];
+        const readings: SegmentData[] = [];
         let segmentSum = 0;
         // NEXUS cycle-13 §3 — absent, observed-zero and invalid readings are
         // three different things and only the middle one is a measured zero.
@@ -104,6 +107,7 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
                 // 1180.2.4: blank/non-numeric is absent data, not a zero-length segment.
                 const v = asNumberOrNull(raw);
                 if (v === null) continue;              // stays a gap
+                readings.push({ value: v, roleIndex: s, format: formatOf(roleMap[role]) });
                 if (v < 0) { sawInvalidReading = true; continue; }  // §3: rejected, never folded into a sum
                 sawReading = true;
                 segmentSum += v;
@@ -121,6 +125,7 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
         }
 
         const derivedTotal: number | null = sawInvalidReading || !sawReading ? null : segmentSum;
+        if (sawInvalidReading) segments.length = 0;
 
         // Sort order
         let sortOrder: number | null = null;
@@ -140,13 +145,15 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
         // of the drawn stack and the declared total keeps the stack inside the
         // scale while still letting an explicit total LARGER than its segments
         // stretch the axis exactly as it did before.
-        const scaleExtent = Math.max(segmentSum, total ?? 0);
+        const scaleExtent = Math.max(sawInvalidReading ? 0 : segmentSum, total ?? 0);
         if (scaleExtent > maxTotal) maxTotal = scaleExtent;
 
         rows.push({
             category: String(cats[r] ?? ""),
             categoryIndex: r,
             segments,
+            readings,
+            invalidDuration: sawInvalidReading,
             total,
             derivedTotal,
             totalMismatch: total !== null && derivedTotal !== null
