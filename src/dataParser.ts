@@ -84,8 +84,19 @@ export function parseDataView(dv: DataView): TimeBreakdownData | null {
             sortOrder = asNumberOrNull(raw);   // 1180.2.4: keeps sort order 0 first
         }
 
-        const effectiveTotal = total ?? segmentSum;
-        if (effectiveTotal > maxTotal) maxTotal = effectiveTotal;
+        // ─── Shared-scale domain (NEXUS cycle-13 §2) ───────────────────────
+        // The domain has to cover EVERYTHING the row draws. It previously used
+        // `total ?? segmentSum`, so a row whose explicit Total disagreed with
+        // its own segments (Total 0 or 6 against a 60-minute stack) set a
+        // domain smaller than the stack it then scaled against: 10+20+30 with
+        // an explicit Total of 0 collapsed maxTotal to 0, the renderer
+        // substituted a maximum of 1, and the stack ran ~49,700px across a
+        // 900px tile with no horizontal scroll access to it. Taking the larger
+        // of the drawn stack and the declared total keeps the stack inside the
+        // scale while still letting an explicit total LARGER than its segments
+        // stretch the axis exactly as it did before.
+        const scaleExtent = Math.max(segmentSum, total ?? 0);
+        if (scaleExtent > maxTotal) maxTotal = scaleExtent;
 
         rows.push({
             category: String(cats[r] ?? ""),
