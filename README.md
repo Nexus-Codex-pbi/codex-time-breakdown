@@ -8,7 +8,7 @@ Side-by-side horizontal stacked bar comparison showing time segments for differe
 - Shows total time as an end label on each bar
 - Optional sorting via a numeric sort order field
 - Configurable bar height, radius, and row spacing
-- Segment labels and values can be shown inside or above segments
+- Segment labels and values are shown inside segments when measured text fits; tooltips always retain the full readings
 - Legend showing segment colors and labels
 - Axis titles for X (time values) and Y (categories)
 - Tooltips showing category, segment values, and total
@@ -43,8 +43,8 @@ The visual provides the following format pane cards:
 - Segment3Color: Fill color for the third segment
 - Segment3Label: Label text for the third segment
 - Total Color: Fill color for the total label text
-- Show Segment Labels: Toggle visibility of segment labels inside/above segments
-- Show Segment Values: Toggle visibility of segment values inside/above segments
+- Show Segment Labels: Toggle visibility of segment labels when they fit inside segments
+- Show Segment Values: Toggle visibility of segment values when they fit inside segments
 - Show Total Label: Toggle visibility of the total label at the end of each bar
 - Value Unit: Unit suffix for values (e.g. 'min', 'sec', 'hrs')
 - Show Legend: Toggle visibility of the legend
@@ -85,6 +85,7 @@ The visual provides the following format pane cards:
 - The sort order field, if bound, must be numeric and determines ascending row order.
 - Each data role accepts only one field.
 - The visual uses a scrollbar when the total content height exceeds the container height.
+- End-label space is measured before scaling all rows. On narrow tiles totals move below the bars; long text is fitted with a full-text hover title. Legend items wrap and non-fitting callouts stay in the row tooltip.
 
 ## Support
 For help or questions, visit https://nexuscodex.nexus/support

@@ -301,8 +301,8 @@ export class Visual implements IVisual {
                 s.categoryColor.value.value
             );
 
-            const w = options.viewport.width;
-            const h = options.viewport.height;
+            const w = Math.max(0, options.viewport.width);
+            const h = Math.max(0, options.viewport.height);
             // Set viewport size on scroll container; render will compute actual content size
             this.scrollContainer.style("width", w + "px").style("height", h + "px");
 
@@ -362,8 +362,8 @@ export class Visual implements IVisual {
         this.container.selectAll("*").remove();
 
         const s = this.formattingSettings.timeBreakdownCard;
-        const barHeight = s.barHeight.value;
-        const barRadius = s.barRadius.value;
+        const barHeight = Math.max(1, s.barHeight.value);
+        const barRadius = Math.max(0, s.barRadius.value);
         // v2 LED-gap inner radius (§5) — smaller than the user's own
         // "outer cap" barRadius so a run of segments reads as LED
         // blocks with a 1px gap, while the true outer ends of the whole
@@ -379,11 +379,11 @@ export class Visual implements IVisual {
         const degradeCallouts = width < 260;   // in-segment value/label callouts hide first
         const degradeLabels = width < 200;     // legend + axis titles hide next
         const degradeTitle = width < 140;      // visual title hides last
-        const rowSpacing = s.rowSpacing.value;
+        const rowSpacing = Math.max(0, s.rowSpacing.value);
         const opacity = this.isHighContrast ? 1 : Math.min(100, Math.max(0, s.segmentOpacity.value)) / 100;
         const unit = s.valueUnit.value || "";
-        const catFontSize = s.categoryFontSize.value;
-        const valFontSize = s.valueFontSize.value;
+        const catFontSize = Math.max(1, s.categoryFontSize.value);
+        const valFontSize = Math.max(1, s.valueFontSize.value);
         const totalColorDefault = s.totalColor.value.value;
 
         // ─── Text treatment (font family/weight/style/decoration,
@@ -407,11 +407,18 @@ export class Visual implements IVisual {
         const valStyle = s.valueItalic.value ? "italic" : "normal";
         const valDecoration = s.valueUnderline.value ? "underline" : "none";
 
-        const totalFontSize = s.totalFontSize.value;
+        const totalFontSize = Math.max(1, s.totalFontSize.value);
         const totalFontFamily = s.totalFontFamily.value || "Segoe UI, sans-serif";
         const totalWeight = weightFor(s.totalBold.value, "700");
         const totalStyle = s.totalItalic.value ? "italic" : "normal";
         const totalDecoration = s.totalUnderline.value ? "underline" : "none";
+        const measure = (text: string, size: number, family: string, weight: string, style = "normal"): number => {
+            const label = this.container.append("text").attr("font-size", size).attr("font-family", family)
+                .style("font-weight", weight).style("font-style", style).text(text);
+            const result = label.node().getBBox().width;
+            label.remove();
+            return result;
+        };
 
         // Dead Time Segment (§2/§5, genuinely optional — "none" default
         // preserves pre-plan behaviour exactly): the one marked segment
@@ -451,15 +458,14 @@ export class Visual implements IVisual {
         // baseline. Reserves extra right-margin so total+chip fit; hidden with
         // the other callouts on narrow tiles and when there's only one row
         // (nothing to compare against).
-        const showDelta = s.showDeltaChip.value && s.showTotalLabel.value
+        let showDelta = s.showDeltaChip.value && s.showTotalLabel.value
             && data.rows.length > 1 && !degradeCallouts;
 
         // Layout — reserve a left gutter for the rotated Y-axis title so it
         // doesn't collide with the bars/category labels ("axis titles snug").
         const axisCfg = this.formattingSettings.axisSettingsCard;
         const hasYTitle = axisCfg.showAxisTitles.value && !degradeLabels && !!axisCfg.yAxisTitle.value;
-        const margin = { top: 8 + titleH, right: showDelta ? 120 : 60, bottom: 30, left: hasYTitle ? 30 : 12 };
-        const trackWidth = width - margin.left - margin.right;
+        const margin = { top: 8 + titleH, right: 12, bottom: 30, left: Math.min(width / 2, hasYTitle ? 30 : 12) };
         const maxTotal = data.maxTotal || 1;
         // §3: the baseline row's own total, which may not exist at all — a row
         // with no duration reading has no total to be a reference for, and
@@ -469,6 +475,33 @@ export class Visual implements IVisual {
             ? (data.rows[0].total ?? data.rows[0].derivedTotal)
             : null;
         const hasBaseline = baselineTotal !== null && baselineTotal > 0;
+        const totalTextFor = (row: TimeBreakdownRow): string => {
+            const total = row.total ?? row.derivedTotal;
+            return total !== null && Number.isFinite(total)
+                ? `${this.formatDuration(total, data.totalFormat)}${unit ? " " + unit : ""}${row.totalMismatch || row.invalidDuration ? " !" : ""}`
+                : row.invalidDuration ? "Invalid duration" : NO_VALUE;
+        };
+        const deltaTextFor = (row: TimeBreakdownRow, index: number): string => {
+            if (index === 0) return "baseline";
+            if (!hasBaseline) return "N/A";
+            const delta = ((row.total ?? row.derivedTotal) - baselineTotal) / baselineTotal * 100;
+            return Math.round(delta) === 0 ? "0%" : (delta < 0 ? "−" : "+") + Math.abs(delta).toFixed(0) + "%";
+        };
+        if (s.showTotalLabel.value) {
+            margin.right += Math.max(...data.rows.map((row, index) => 8
+                + measure(totalTextFor(row), totalFontSize, totalFontFamily, totalWeight, totalStyle)
+                + (showDelta && (row.total ?? row.derivedTotal) !== null
+                    ? 18 + measure(deltaTextFor(row, index), 11, "Segoe UI, sans-serif", "700") : 0)));
+        }
+        // If the end-label reservation leaves no useful track, move totals
+        // below the bars. Both arrangements retain a shared, nonnegative scale.
+        const totalsBelow = width - margin.left - margin.right < 24;
+        if (totalsBelow) {
+            margin.right = Math.min(12, width / 2);
+            showDelta = false;
+        }
+        const trackWidth = Math.max(0, width - margin.left - margin.right);
+        const rowWidth = Math.max(0, width - margin.left - Math.min(12, width / 2));
 
         if (showTitle) {
             const tAlign = textAlignFor(String((titleFmt as any).titleAlign?.value || "left"));
@@ -490,6 +523,7 @@ export class Visual implements IVisual {
                 .style("fill", this.isHighContrast ? this.highContrastForeground : adaptiveTitle)
                 .text(String(titleFmt.titleText.value))
                 .style("display", null);
+            this.fitText(this.titleEl.node(), Math.max(0, width - margin.left * 2));
         } else {
             this.titleEl.style("display", "none");
         }
@@ -497,7 +531,6 @@ export class Visual implements IVisual {
         // Legend height — degraded (hidden) before the title as the tile
         // shrinks (§7: callouts -> labels/legend -> title).
         const showLegendResolved = s.showLegend.value && !degradeLabels;
-        const legendH = showLegendResolved ? 24 : 0;
 
         // Shared flat category-label colour for the legend + axis titles
         // (D-16 sweep: the untouched dark-navy default is invisible on dark
@@ -520,35 +553,43 @@ export class Visual implements IVisual {
             const legendG = this.container.append("g");
 
             let lx = 0;
+            let ly = 0;
+            let legendW = 0;
             usedSegments.forEach((idx) => {
                 const cfg = segmentConfigs[idx];
                 if (!cfg) return;
+                const itemWidth = Math.min(rowWidth, 14 + measure(cfg.label, 10, "Segoe UI, sans-serif", "400"));
+                if (lx > 0 && lx + itemWidth > rowWidth) {
+                    lx = 0;
+                    ly += 18;
+                }
 
                 legendG.append("rect")
-                    .attr("x", lx).attr("y", 0)
+                    .attr("x", lx).attr("y", ly)
                     .attr("width", 10).attr("height", 10).attr("rx", 2)
                     .attr("fill", cfg.color).attr("opacity", opacity);
 
                 const label = legendG.append("text")
-                    .attr("x", lx + 14).attr("y", 5).attr("dy", "0.35em")
+                    .attr("x", lx + 14).attr("y", ly + 5).attr("dy", "0.35em")
                     .attr("font-size", "10px").attr("font-family", "Segoe UI, sans-serif")
                     .attr("fill", this.isHighContrast ? this.highContrastForeground : catFlatColor)
                     .text(cfg.label);
+                this.fitText(label.node(), Math.max(0, rowWidth - lx - 14));
 
                 const bbox = (label.node() as SVGTextElement).getBBox();
                 lx += 14 + bbox.width + 16;
+                legendW = Math.max(legendW, lx - 16);
             });
 
             // Legend alignment (legendAlign): left (default) | centre | right
             // — measure the built run (lx minus the trailing gap) and shift the
             // whole group. Mirrors the title's alignment convention.
-            const legendW = Math.max(0, lx - 16);
             const legAlign = textAlignFor(String((s as any).legendAlign?.value || "left"));
             const legX = legAlign === "center" ? (width - legendW) / 2
                 : legAlign === "right" ? (width - margin.left - legendW)
                 : margin.left;
             legendG.attr("transform", `translate(${Math.max(margin.left, legX)}, ${yOffset})`);
-            yOffset += legendH;
+            yOffset += ly + 24;
         }
 
         // Rows
@@ -578,7 +619,7 @@ export class Visual implements IVisual {
             const catColor = this.isHighContrast ? this.highContrastForeground : resolvedCategoryColor;
 
             // Category label
-            rowG.append("text")
+            const categoryEl = rowG.append("text")
                 .attr("x", 0)
                 .attr("y", 0)
                 .attr("dy", "0.9em")
@@ -589,8 +630,13 @@ export class Visual implements IVisual {
                 .style("text-decoration", catDecoration)
                 .attr("fill", catColor)
                 .text(row.category);
+            this.fitText(categoryEl.node(), rowWidth);
 
-            const barY = catFontSize + 4;
+            const categoryH = Math.max(catFontSize + 4, categoryEl.node().getBBox().height + 2);
+            const bodyH = Math.max(barHeight, !totalsBelow && s.showTotalLabel.value ? totalFontSize * 1.2 : 0);
+            const barY = categoryH + (bodyH - barHeight) / 2;
+            const totalY = totalsBelow ? categoryH + bodyH + 6 + totalFontSize / 2 : categoryH + bodyH / 2;
+            const rowH = categoryH + bodyH + (totalsBelow && s.showTotalLabel.value ? 8 + totalFontSize * 1.2 : 0);
             let xPos = 0;
 
             // Segments — categorical ramp fill (segmentConfigs above),
@@ -614,7 +660,7 @@ export class Visual implements IVisual {
 
                 // Segment path (rounded-rect with per-corner radius)
                 rowG.append("path")
-                    .attr("d", roundedRectPath(xPos, barY, Math.max(renderedW, 0.01), barHeight, rLeft, rRight, rRight, rLeft))
+                    .attr("d", roundedRectPath(xPos, barY, renderedW, barHeight, rLeft, rRight, rRight, rLeft))
                     .attr("fill", cfg.color)
                     .attr("opacity", opacity);
 
@@ -623,13 +669,13 @@ export class Visual implements IVisual {
                 // an individual segment's own segW > 30 threshold.
                 const showLabel = s.showSegmentLabels.value && !degradeCallouts;
                 const showValue = s.showSegmentValues.value && !degradeCallouts;
-                if ((showLabel || showValue) && segW > 30) {
+                if ((showLabel || showValue) && renderedW > 0) {
                     const parts: string[] = [];
                     if (showLabel) parts.push(cfg.label);
                     if (showValue) parts.push(`${this.formatDuration(seg.value, seg.format)}${unit}`);
                     const labelText = parts.join(" ");
-                    rowG.append("text")
-                        .attr("x", xPos + segW / 2)
+                    const callout = rowG.append("text")
+                        .attr("x", xPos + renderedW / 2)
                         .attr("y", barY + barHeight / 2)
                         .attr("dy", "0.35em")
                         .attr("text-anchor", "middle")
@@ -641,24 +687,11 @@ export class Visual implements IVisual {
                         .style("font-feature-settings", TABULAR_NUMS)
                         .attr("fill", this.contrastText(compositeOver(cfg.color, 100 - opacity * 100, this.surfaceHex)))
                         .text(labelText);
-                } else if ((showLabel || showValue) && segW > 0) {
-                    // Too narrow — place above
-                    const parts: string[] = [];
-                    if (showLabel) parts.push(cfg.label);
-                    if (showValue) parts.push(`${this.formatDuration(seg.value, seg.format)}${unit}`);
-                    const labelText = parts.join(" ");
-                    rowG.append("text")
-                        .attr("x", xPos + segW / 2)
-                        .attr("y", barY - 2)
-                        .attr("text-anchor", "middle")
-                        .attr("font-size", `${valFontSize - 1}px`)
-                        .attr("font-family", valFontFamily)
-                        .style("font-weight", valWeight)
-                        .style("font-style", valStyle)
-                        .style("text-decoration", valDecoration)
-                        .style("font-feature-settings", TABULAR_NUMS)
-                        .attr("fill", this.isHighContrast ? this.highContrastForeground : this.adaptiveInk())
-                        .text(labelText);
+                    if (callout.node().getBBox().width + 8 > renderedW && showLabel && showValue) {
+                        callout.text(`${this.formatDuration(seg.value, seg.format)}${unit}`);
+                    }
+                    const box = callout.node().getBBox();
+                    if (box.width + 8 > renderedW || box.height + 2 > barHeight) callout.remove();
                 }
 
                 xPos += segW;
@@ -675,12 +708,11 @@ export class Visual implements IVisual {
                 // — that renders the no-value dash, never "0 min".
                 const totalVal = row.total ?? row.derivedTotal;
                 const hasTotal = totalVal !== null && Number.isFinite(totalVal);
-                const totalText = hasTotal
-                    ? `${this.formatDuration(totalVal, data.totalFormat)} ${unit}${row.totalMismatch || row.invalidDuration ? " !" : ""}`
-                    : row.invalidDuration ? "Invalid duration" : NO_VALUE;
+                const totalText = totalTextFor(row);
+                const totalX = totalsBelow ? 0 : xPos + 8;
                 const totalEl = rowG.append("text")
-                    .attr("x", xPos + 8)
-                    .attr("y", barY + barHeight / 2)
+                    .attr("x", totalX)
+                    .attr("y", totalY)
                     .attr("dy", "0.35em")
                     .attr("font-size", `${totalFontSize}px`)
                     .attr("font-family", totalFontFamily)
@@ -690,6 +722,7 @@ export class Visual implements IVisual {
                     .style("font-feature-settings", TABULAR_NUMS)
                     .attr("fill", totalColor)
                     .text(totalText);
+                this.fitText(totalEl.node(), Math.max(0, rowWidth - totalX));
 
                 const animationKey = identity?.getKey() ?? row.category;
                 if (this.lastTotalByCategory.get(animationKey) !== totalText) {
@@ -708,7 +741,7 @@ export class Visual implements IVisual {
                 // fabricated "baseline"/"0%" against a value that was never read.
                 if (showDelta && hasTotal) {
                     const totalW = (totalEl.node() as SVGTextElement).getBBox().width;
-                    const chipX = (xPos + 8) + totalW + 6;
+                    const chipX = totalX + totalW + 6;
                     const chipH = 16, chipPadX = 6;
                     let chipStr: string, chipInk: string, chipFill: string;
                     const delta = hasBaseline ? (totalVal - baselineTotal) / baselineTotal * 100 : null;
@@ -734,14 +767,14 @@ export class Visual implements IVisual {
                         .attr("stroke", this.isHighContrast ? this.highContrastForeground : "none")
                         .attr("stroke-width", this.isHighContrast ? 1 : 0);
                     const chipTextEl = rowG.append("text")
-                        .attr("y", barY + barHeight / 2).attr("dy", "0.35em")
+                        .attr("y", totalY).attr("dy", "0.35em")
                         .attr("font-size", "11px").style("font-weight", "700")
                         .attr("font-family", "Segoe UI, sans-serif")
                         .style("font-feature-settings", TABULAR_NUMS)
                         .attr("fill", chipInk).text(chipStr);
                     const chipTextW = (chipTextEl.node() as SVGTextElement).getBBox().width;
                     chipTextEl.attr("x", chipX + chipPadX);
-                    chipRect.attr("x", chipX).attr("y", barY + barHeight / 2 - chipH / 2)
+                    chipRect.attr("x", chipX).attr("y", totalY - chipH / 2)
                         .attr("width", chipTextW + chipPadX * 2).attr("height", chipH);
                 }
             }
@@ -750,8 +783,8 @@ export class Visual implements IVisual {
             const hitRect = rowG.append("rect")
                 .attr("x", 0)
                 .attr("y", 0)
-                .attr("width", trackWidth + 60)
-                .attr("height", catFontSize + 4 + barHeight)
+                .attr("width", rowWidth)
+                .attr("height", rowH)
                 .attr("fill", "transparent")
                 .style("cursor", "pointer");
 
@@ -807,7 +840,7 @@ export class Visual implements IVisual {
                 e.stopPropagation();
             });
 
-            yOffset += catFontSize + 4 + barHeight + rowSpacing;
+            yOffset += rowH + Math.max(4, rowSpacing);
         });
 
         // Numeric x-axis tick VALUES on the shared scale (board: 0 · 3 · 6 …).
@@ -824,15 +857,21 @@ export class Visual implements IVisual {
             const tickDecimals = Math.max(0, Math.ceil(-Math.log10(niceStep)));
             const tickColor = this.isHighContrast ? this.highContrastForeground : mutedInk(this.adaptiveInk(), this.surfaceHex);
             const tickY = yOffset + 12;
-            for (let v = 0; v <= maxTotal + niceStep * 0.001; v += niceStep) {
-                this.container.append("text")
+            let previousRight = -Infinity;
+            for (let i = 0; i <= 12 && niceStep > 0 && Number.isFinite(niceStep); i++) {
+                const v = i * niceStep;
+                if (v > maxTotal + niceStep * 0.001) break;
+                const tick = this.container.append("text")
                     .attr("x", margin.left + (v / maxTotal) * trackWidth)
                     .attr("y", tickY)
-                    .attr("text-anchor", "middle")
+                    .attr("text-anchor", i === 0 ? "start" : "middle")
                     .attr("font-size", "10px")
                     .attr("font-family", "Segoe UI, sans-serif")
                     .attr("fill", tickColor)
                     .text(this.formatTick(v, tickDecimals, data.totalFormat));
+                const box = tick.node().getBBox();
+                if (box.x < previousRight + 6 || box.x + box.width > width) tick.remove();
+                else previousRight = box.x + box.width;
             }
             yOffset += 20;
         }
@@ -858,7 +897,7 @@ export class Visual implements IVisual {
                 // here; it's now at the top, which left the title snug on the
                 // ticks.)
                 const xTitleY = yOffset + 12 + axisTitleFontSize;
-                this.container.append("text")
+                const xTitle = this.container.append("text")
                     .classed("axis-title x-axis-title", true)
                     .attr("x", margin.left + trackWidth / 2)
                     .attr("y", xTitleY)
@@ -868,11 +907,12 @@ export class Visual implements IVisual {
                     .attr("fill", titleColor)
                     .attr("font-family", "Segoe UI, sans-serif")
                     .text(xAxisTitle);
+                this.fitText(xTitle.node(), trackWidth);
                 yOffset = xTitleY + 6;
             }
             if (yAxisTitle) {
                 const chartMidY = margin.top + (yOffset - margin.top) / 2;
-                this.container.append("text")
+                const yTitle = this.container.append("text")
                     .classed("axis-title y-axis-title", true)
                     .attr("x", -chartMidY)
                     .attr("y", 12)
@@ -883,6 +923,7 @@ export class Visual implements IVisual {
                     .attr("fill", titleColor)
                     .attr("font-family", "Segoe UI, sans-serif")
                     .text(yAxisTitle);
+                this.fitText(yTitle.node(), Math.max(0, yOffset - margin.top - 12));
             }
         }
 
@@ -893,6 +934,23 @@ export class Visual implements IVisual {
     private formatDuration(value: number, format: string | null | undefined): string {
         if (!Number.isFinite(value)) return NO_VALUE;
         return formatModelNumber(value, format, this.host?.locale || undefined);
+    }
+
+    private fitText(node: SVGTextElement, width: number): void {
+        const full = node.textContent ?? "";
+        if (node.getBBox().width <= width) return;
+        const chars = Array.from(full);
+        let low = 0, high = chars.length;
+        while (low < high) {
+            const mid = Math.ceil((low + high) / 2);
+            node.textContent = chars.slice(0, mid).join("") + "…";
+            if (node.getBBox().width <= width) low = mid;
+            else high = mid - 1;
+        }
+        node.textContent = low ? chars.slice(0, low).join("") + "…" : "";
+        const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        title.textContent = full;
+        node.appendChild(title);
     }
 
     /** Axis tick label — fixed decimals derived from the tick STEP, not the
