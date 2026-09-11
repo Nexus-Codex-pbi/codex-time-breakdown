@@ -69,7 +69,7 @@ function roundedRectPath(x: number, y: number, w: number, h: number, rTL: number
 }
 
 export class Visual implements IVisual {
-    private host: IVisualHost;
+    private host: IVisualHost & { allowInteractions?: boolean };
     private target: HTMLElement;
     private scrollContainer: d3.Selection<HTMLDivElement, unknown, null, undefined>;
     private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
@@ -178,13 +178,19 @@ export class Visual implements IVisual {
         });
 
         // Context menu
-        this.target.addEventListener("contextmenu", (e: MouseEvent) => {
-            this.selectionManager.showContextMenu({}, { x: e.clientX, y: e.clientY });
-            e.preventDefault();
-        });
+        d3.select(this.target)
+            .on("contextmenu.timeBreakdown", (e: MouseEvent) => {
+                if (this.host.allowInteractions !== false) {
+                    this.selectionManager.showContextMenu({} as ISelectionId, { x: e.clientX, y: e.clientY });
+                }
+                e.preventDefault();
+            })
+            .on("click.timeBreakdown", () => {
+                if (this.host.allowInteractions !== false) this.selectionManager.clear().then(() => this.applySelection());
+            });
 
-        // Allow deselection
-        this.selectionManager.registerOnSelectCallback(() => {});
+        this.selectionManager.registerOnSelectCallback(ids => this.applySelection(ids));
+        this.svg.attr("role", "listbox").attr("aria-label", "Time breakdown").attr("aria-multiselectable", "true");
     }
 
     public update(options: VisualUpdateOptions): void {
@@ -303,6 +309,7 @@ export class Visual implements IVisual {
             this.scrollContainer.style("width", w + "px").style("height", h + "px");
 
             const contentH = this.render(data, w, theme, hc);
+            this.applySelection();
             // Fill the tile ("flexible like all the others"): when the natural
             // content is SHORTER than the viewport, stretch the card (svg +
             // background + border) to the full height so there's no dead
@@ -352,6 +359,15 @@ export class Visual implements IVisual {
         } catch (e) {
             this.events.renderingFailed(options, String(e));
         }
+    }
+
+    private applySelection(ids = this.selectionManager.getSelectionIds()): void {
+        const keys = new Set(ids.map(id => (id as ISelectionId).getKey()));
+        this.container?.selectAll<SVGGElement, unknown>("g[data-key]").each(function() {
+            const selected = keys.has(this.getAttribute("data-key"));
+            d3.select(this).style("opacity", keys.size === 0 || selected ? 1 : 0.35)
+                .attr("aria-selected", String(selected));
+        });
     }
 
     private renderEmpty(options: VisualUpdateOptions, theme: Theme, hc: ReturnType<typeof applyHighContrast>): void {
@@ -621,6 +637,7 @@ export class Visual implements IVisual {
             const identity = this.rowSelectionIds[row.categoryIndex];
             const rowG = this.container.append("g")
                 .attr("data-key", identity?.getKey() ?? "")
+                .attr("role", "option").attr("tabindex", this.host.allowInteractions === false ? -1 : 0)
                 .attr("transform", `translate(${margin.left}, ${yOffset})`);
 
             // Per-row Total Colour resolution (TRANS-04 fx): reads the
@@ -811,12 +828,13 @@ export class Visual implements IVisual {
 
             // Invisible hit rect for tooltip and cross-filtering
             const hitRect = rowG.append("rect")
+                .attr("class", "time-breakdown-hit")
                 .attr("x", 0)
                 .attr("y", 0)
                 .attr("width", rowWidth)
                 .attr("height", rowH)
                 .attr("fill", "transparent")
-                .style("cursor", "pointer");
+                .style("cursor", this.host.allowInteractions === false ? "default" : "pointer");
 
             const tooltipItems: VisualTooltipDataItem[] = [
                 { displayName: "Category", value: row.category }
@@ -851,8 +869,14 @@ export class Visual implements IVisual {
                 });
             }
 
-            const hitNode = hitRect.node() as SVGRectElement;
-            hitNode.addEventListener("mousemove", (e: MouseEvent) => {
+            rowG.attr("aria-label", tooltipItems.map(item => `${item.displayName}: ${item.value}`).join(", "));
+            const selectRow = (e: MouseEvent | KeyboardEvent): void => {
+                if (this.host.allowInteractions !== false && identity) {
+                    this.selectionManager.select(identity, e.ctrlKey || e.metaKey).then(() => this.applySelection());
+                }
+                e.stopPropagation();
+            };
+            hitRect.on("mousemove.timeBreakdown", (e: MouseEvent) => {
                 this.tooltipService.show({
                     coordinates: [e.clientX, e.clientY],
                     isTouchEvent: false,
@@ -860,14 +884,33 @@ export class Visual implements IVisual {
                     identities: identity ? [identity] : []
                 });
             });
-            hitNode.addEventListener("mouseleave", () => {
+            hitRect.on("mouseleave.timeBreakdown", () => {
                 this.tooltipService.hide({ isTouchEvent: false, immediately: false });
             });
-            hitNode.addEventListener("click", (e: MouseEvent) => {
-                if (identity) {
-                    this.selectionManager.select(identity, e.ctrlKey || e.metaKey);
+            hitRect.on("click.timeBreakdown", selectRow);
+            rowG.on("contextmenu.timeBreakdown", (e: MouseEvent) => {
+                if (this.host.allowInteractions !== false && identity) {
+                    this.selectionManager.showContextMenu(identity, { x: e.clientX, y: e.clientY });
                 }
+                e.preventDefault();
                 e.stopPropagation();
+            }).on("keydown.timeBreakdown", (e: KeyboardEvent) => {
+                if (this.host.allowInteractions === false) return;
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    selectRow(e);
+                } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    this.selectionManager.clear().then(() => this.applySelection());
+                } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+                    e.preventDefault();
+                    const box = rowG.node().getBoundingClientRect();
+                    this.selectionManager.showContextMenu(identity, { x: box.x, y: box.y });
+                }
+            }).on("focus.timeBreakdown", () => {
+                rowG.style("outline", `2px solid ${this.isHighContrast ? this.highContrastForeground : this.adaptiveInk()}`);
+            }).on("blur.timeBreakdown", () => {
+                rowG.style("outline", null);
             });
 
             yOffset += rowH + Math.max(4, rowSpacing);
