@@ -209,16 +209,8 @@ export class Visual implements IVisual {
             }
 
             const dv: DataView = options.dataViews?.[0];
-            if (!dv) {
-                this.container.selectAll("*").remove();
-                this.backgroundRect.attr("width", 0).attr("height", 0);
-                applyCardSignature(this.cornerSignature, this.formattingSettings?.cardSignature, { autoHex: accentToken("dark"), mirror: true, muted: true });
-                this.events.renderingFinished(options);
-                return;
-            }
-
             this.formattingSettings = this.formattingSettingsService
-                .populateFormattingSettingsModel(VisualFormattingSettingsModel, dv);
+                .populateFormattingSettingsModel(VisualFormattingSettingsModel, dv ?? { metadata: { columns: [] } });
 
             // ─── v3 theme pick + single HC fallback rule, computed once
             // and reused everywhere colour is resolved below (§8, D-16:
@@ -243,12 +235,7 @@ export class Visual implements IVisual {
 
             const data = parseDataView(dv);
             if (!data || data.rows.length === 0) {
-                this.container.selectAll("*").remove();
-                this.backgroundRect.attr("width", 0).attr("height", 0);
-                this.rowSelectionIds = [];
-                applyCardSignature(this.cornerSignature, this.formattingSettings.cardSignature, {
-                    autoHex: accentToken(theme), hcActive: hc.active, hcColor: hc.color, mirror: true, muted: true,
-                });
+                this.renderEmpty(options, theme, hc);
                 this.events.renderingFinished(options);
                 return;
             }
@@ -365,6 +352,34 @@ export class Visual implements IVisual {
         } catch (e) {
             this.events.renderingFailed(options, String(e));
         }
+    }
+
+    private renderEmpty(options: VisualUpdateOptions, theme: Theme, hc: ReturnType<typeof applyHighContrast>): void {
+        const w = Math.max(0, options.viewport.width), h = Math.max(0, options.viewport.height);
+        this.container.selectAll("*").remove();
+        this.rowSelectionIds = [];
+        this.categoricalCategories = undefined;
+        this.categoryColorHelper = this.totalColorHelper = null;
+        this.segmentColorHelpers = [];
+        this.lastTotalByCategory.clear();
+        this.titleEl.text("").style("display", "none");
+        this.borderRect.style("display", "none");
+        this.scrollContainer.style("width", w + "px").style("height", h + "px");
+        this.svg.attr("width", w).attr("height", h);
+        const background = this.formattingSettings.background;
+        this.backgroundRect.attr("width", w).attr("height", h)
+            .attr("fill", this.isHighContrast ? this.highContrastBackground
+                : toRgba(background.backgroundColor.value.value, background.transparency.value));
+        if (w >= 50 && h >= 16) {
+            this.container.append("text").attr("class", "time-breakdown-empty")
+                .attr("x", w / 2).attr("y", Math.min(24, h / 2)).attr("dy", "0.35em")
+                .attr("text-anchor", "middle").attr("font-family", "Segoe UI, sans-serif").attr("font-size", 12)
+                .attr("fill", this.isHighContrast ? this.highContrastForeground : this.adaptiveInk())
+                .text("No data");
+        }
+        applyCardSignature(this.cornerSignature, this.formattingSettings.cardSignature, {
+            autoHex: accentToken(theme), hcActive: hc.active, hcColor: hc.color, mirror: true, muted: true,
+        });
     }
 
     private render(data: TimeBreakdownData, width: number, theme: Theme = "dark", hc: ReturnType<typeof applyHighContrast> = applyHighContrast(null)): number {
