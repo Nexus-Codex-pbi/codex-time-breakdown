@@ -18,7 +18,7 @@ import { dataViewWildcard } from "powerbi-visuals-utils-dataviewutils";
 import { ColorHelper } from "powerbi-visuals-utils-colorutils";
 import { VisualFormattingSettingsModel, TimeBreakdownSettings, AxisSettingsCard, textAlignFor } from "./settings";
 import { parseDataView, TimeBreakdownData, TimeBreakdownRow } from "./dataParser";
-import { toRgba } from "./shared/colorHelpers";
+import { toRgba, compositeOver, surfaceTone, contrastInk, contrastRatio, mutedInk } from "./shared/colorHelpers";
 import { formatModelNumber, fractionDigitsFor } from "./shared/numberFormat";
 
 // v3 appearance engine (frozen, 01-15) — accent token, dim-theme
@@ -38,20 +38,6 @@ import { applyHighContrast } from "./shared/highContrast";
 
 import * as d3 from "d3";
 import { LicenseGate } from "./shared/licensing";
-
-/** Luminance-based theme pick (matches the pbiNowVsThen/pbiKpiCard v3
- * pilots' own convention) — only trusts bgHex as a real signal when the
- * background layer is actually visible (transparency < 100); otherwise
- * defaults dark (this visual's pre-existing default is fully
- * transparent, D-06). */
-function themeFor(hex: string, visible: boolean): Theme {
-    if (!visible) return "dark";
-    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})/i.exec(hex || "");
-    if (!m) return "dark";
-    const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return luminance > 0.55 ? "light" : "dark";
-}
 
 /**
  * Shown wherever the data provides no duration to report (NEXUS cycle-13 §3).
@@ -100,6 +86,7 @@ export class Visual implements IVisual {
     private isHighContrast: boolean = false;
     private highContrastForeground: string = "";
     private highContrastBackground: string = "";
+    private surfaceHex: string = "#ffffff";
 
     // State for tooltips and cross-filtering
     private rowSelectionIds: ISelectionId[] = [];
@@ -179,11 +166,15 @@ export class Visual implements IVisual {
         // cyan identity, not any single segment's categorical colour),
         // appended to the scroll container (an HTML overlay above the
         // SVG, pointer-events:none) so it paints above every row.
+        const initialHc = applyHighContrast(this.host.colorPalette, { fallbackColor: accentToken("dark") });
         this.cornerSignature = makeCornerBrackets(
             this.scrollContainer.node() as HTMLElement,
-            accentToken("dark"),
+            initialHc.color,
             { variant: "cornerBracket", mirror: true }
         );
+        applyCardSignature(this.cornerSignature, undefined, {
+            autoHex: initialHc.color, hcActive: initialHc.active, hcColor: initialHc.color, mirror: true,
+        });
 
         // Context menu
         this.target.addEventListener("contextmenu", (e: MouseEvent) => {
@@ -235,7 +226,9 @@ export class Visual implements IVisual {
             const bgSettingsForTheme = this.formattingSettings.background;
             const bgHexForTheme = bgSettingsForTheme.backgroundColor.value?.value ?? "#ffffff";
             const bgTransparencyForTheme = bgSettingsForTheme.transparency.value ?? 100;
-            const theme: Theme = themeFor(bgHexForTheme, bgTransparencyForTheme < 100);
+            this.surfaceHex = this.isHighContrast ? this.highContrastBackground
+                : compositeOver(bgHexForTheme, bgTransparencyForTheme, colorPalette.background?.value ?? "#ffffff");
+            const theme: Theme = surfaceTone(this.surfaceHex);
             const hc = applyHighContrast(colorPalette, { fallbackColor: accentToken(theme) });
 
             applyCardSignature(this.cornerSignature, this.formattingSettings.cardSignature, {
@@ -337,7 +330,7 @@ export class Visual implements IVisual {
             this.backgroundRect
                 .attr("width", w)
                 .attr("height", fillH)
-                .attr("fill", this.isHighContrast ? "none" : toRgba(bgHex, bgTransparencyPct));
+                .attr("fill", this.isHighContrast ? this.highContrastBackground : toRgba(bgHex, bgTransparencyPct));
 
             // Visual's own Border card — stroke-rect framing the visual; inset
             // by half the width so the stroke isn't clipped at the tile edge.
@@ -484,8 +477,7 @@ export class Visual implements IVisual {
             // Adaptive default (D-16 sentinel): untouched shared-Title navy
             // swaps to the dark text token on dark surfaces.
             const setTitle = titleFmt.titleColor.value.value;
-            const adaptiveTitle = setTitle === "#1a1a2e" && theme === "dark"
-                ? surfaceTokens("dark").text : setTitle;
+            const adaptiveTitle = setTitle === "#1a1a2e" ? this.adaptiveInk(setTitle) : setTitle;
             this.titleEl
                 .attr("x", x)
                 .attr("y", titleFontSize + 4)
@@ -510,8 +502,8 @@ export class Visual implements IVisual {
         // Shared flat category-label colour for the legend + axis titles
         // (D-16 sweep: the untouched dark-navy default is invisible on dark
         // surfaces, so swap to the light text token there).
-        const catFlatColor = (s.categoryColor.value.value === "#130064" && theme === "dark")
-            ? surfaceTokens("dark").text : s.categoryColor.value.value;
+        const catFlatColor = s.categoryColor.value.value === "#130064"
+            ? this.adaptiveInk() : s.categoryColor.value.value;
 
         let yOffset = margin.top;
 
@@ -576,13 +568,13 @@ export class Visual implements IVisual {
             // D-16 adaptive: the untouched dark-navy default swaps to the light
             // text token on dark surfaces (total value was invisible on dark —
             // Neil sweep pattern); user-set / fx honoured.
-            if (!this.isHighContrast && resolvedTotalColor === "#130064" && theme === "dark") resolvedTotalColor = surfaceTokens("dark").text;
+            if (resolvedTotalColor === "#130064") resolvedTotalColor = this.adaptiveInk();
             const totalColor = this.isHighContrast ? this.highContrastForeground : resolvedTotalColor;
 
             // Per-row Category Label Colour resolution (TEXT-02 fx): same
             // pattern as Total Colour above.
             let resolvedCategoryColor = this.categoryColorHelper?.getColorForMeasure(instanceObjects, "categoryColor") ?? s.categoryColor.value.value;
-            if (!this.isHighContrast && resolvedCategoryColor === "#130064" && theme === "dark") resolvedCategoryColor = surfaceTokens("dark").text;
+            if (resolvedCategoryColor === "#130064") resolvedCategoryColor = this.adaptiveInk();
             const catColor = this.isHighContrast ? this.highContrastForeground : resolvedCategoryColor;
 
             // Category label
@@ -647,7 +639,7 @@ export class Visual implements IVisual {
                         .style("font-style", valStyle)
                         .style("text-decoration", valDecoration)
                         .style("font-feature-settings", TABULAR_NUMS)
-                        .attr("fill", this.contrastText(cfg.color))
+                        .attr("fill", this.contrastText(compositeOver(cfg.color, 100 - opacity * 100, this.surfaceHex)))
                         .text(labelText);
                 } else if ((showLabel || showValue) && segW > 0) {
                     // Too narrow — place above
@@ -665,7 +657,7 @@ export class Visual implements IVisual {
                         .style("font-style", valStyle)
                         .style("text-decoration", valDecoration)
                         .style("font-feature-settings", TABULAR_NUMS)
-                        .attr("fill", cfg.color)
+                        .attr("fill", this.isHighContrast ? this.highContrastForeground : this.adaptiveInk())
                         .text(labelText);
                 }
 
@@ -722,7 +714,7 @@ export class Visual implements IVisual {
                     const delta = hasBaseline ? (totalVal - baselineTotal) / baselineTotal * 100 : null;
                     if (rowIndex === 0 || delta === null || Math.round(delta) === 0) {
                         chipStr = rowIndex === 0 ? "baseline" : delta === null ? "N/A" : "0%";
-                        const grey = surfaceTokens(theme).muted;
+                        const grey = mutedInk(this.adaptiveInk(), this.surfaceHex);
                         chipInk = this.isHighContrast ? this.highContrastForeground : grey;
                         chipFill = this.isHighContrast ? "none" : toRgba(grey, 86);
                     } else {
@@ -730,6 +722,12 @@ export class Visual implements IVisual {
                         const band = bandColor(delta <= 0 ? "success" : "danger", theme);
                         chipInk = this.isHighContrast ? this.highContrastForeground : band;
                         chipFill = this.isHighContrast ? "none" : toRgba(band, 85);
+                    }
+                    if (!this.isHighContrast) {
+                        const chipSurface = compositeOver(chipInk, chipStr === "baseline" || chipStr === "N/A" || chipStr === "0%" ? 86 : 85, this.surfaceHex);
+                        if (contrastRatio(chipInk, chipSurface) < 4.5) {
+                            chipInk = contrastInk(chipSurface, "#000000", "#ffffff");
+                        }
                     }
                     const chipRect = rowG.append("rect")
                         .attr("rx", chipH / 2).attr("ry", chipH / 2).attr("fill", chipFill)
@@ -824,7 +822,7 @@ export class Visual implements IVisual {
             // turned a 0.1-minute step into "0,0,0,0,0,1,1" — seven labels, two
             // distinct values, none of them the position they marked.
             const tickDecimals = Math.max(0, Math.ceil(-Math.log10(niceStep)));
-            const tickColor = this.isHighContrast ? this.highContrastForeground : surfaceTokens(theme).muted;
+            const tickColor = this.isHighContrast ? this.highContrastForeground : mutedInk(this.adaptiveInk(), this.surfaceHex);
             const tickY = yOffset + 12;
             for (let v = 0; v <= maxTotal + niceStep * 0.001; v += niceStep) {
                 this.container.append("text")
@@ -915,13 +913,13 @@ export class Visual implements IVisual {
 
     private contrastText(bgHex: string): string {
         if (this.isHighContrast) return this.highContrastBackground;
-        const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(bgHex);
-        if (!m) return "#000000";
-        const r = parseInt(m[1], 16);
-        const g = parseInt(m[2], 16);
-        const b = parseInt(m[3], 16);
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        return luminance > 0.55 ? "#000000" : "#ffffff";
+        return contrastInk(bgHex, "#000000", "#ffffff");
+    }
+
+    private adaptiveInk(darkInk = "#130064"): string {
+        const ink = contrastInk(this.surfaceHex, darkInk, surfaceTokens("dark").text);
+        return contrastRatio(ink, this.surfaceHex) >= 4.5
+            ? ink : contrastInk(this.surfaceHex, "#000000", "#ffffff");
     }
 
     public getFormattingModel(): powerbi.visuals.FormattingModel {
