@@ -110,6 +110,7 @@ export class Visual implements IVisual {
     private licenseGate: LicenseGate;
 
     private lastUpdateOptions: VisualUpdateOptions | null = null;
+    private destroyed = false;
 
 
     constructor(options: VisualConstructorOptions) {
@@ -194,6 +195,7 @@ export class Visual implements IVisual {
     }
 
     public update(options: VisualUpdateOptions): void {
+        if (this.destroyed) return;
         this.events.renderingStarted(options);
         this.lastUpdateOptions = options;
 
@@ -362,6 +364,7 @@ export class Visual implements IVisual {
     }
 
     private applySelection(ids = this.selectionManager.getSelectionIds()): void {
+        if (this.destroyed) return;
         const keys = new Set(ids.map(id => (id as ISelectionId).getKey()));
         this.container?.selectAll<SVGGElement, unknown>("g[data-key]").each(function() {
             const selected = keys.has(this.getAttribute("data-key"));
@@ -372,7 +375,7 @@ export class Visual implements IVisual {
 
     private renderEmpty(options: VisualUpdateOptions, theme: Theme, hc: ReturnType<typeof applyHighContrast>): void {
         const w = Math.max(0, options.viewport.width), h = Math.max(0, options.viewport.height);
-        this.container.selectAll("*").remove();
+        this.container.selectAll("*").on(".timeBreakdown", null).remove();
         this.rowSelectionIds = [];
         this.categoricalCategories = undefined;
         this.categoryColorHelper = this.totalColorHelper = null;
@@ -399,7 +402,7 @@ export class Visual implements IVisual {
     }
 
     private render(data: TimeBreakdownData, width: number, theme: Theme = "dark", hc: ReturnType<typeof applyHighContrast> = applyHighContrast(null)): number {
-        this.container.selectAll("*").remove();
+        this.container.selectAll("*").on(".timeBreakdown", null).remove();
 
         const s = this.formattingSettings.timeBreakdownCard;
         const barHeight = Math.max(1, s.barHeight.value);
@@ -1058,14 +1061,28 @@ export class Visual implements IVisual {
     }
 
     public destroy(): void {
+        if (this.destroyed) return;
+        this.destroyed = true;
         // Drop the in-flight licence check FIRST: its redraw callback replays
         // update() against a torn-down target otherwise (NEXUS lifecycle finding).
         this.licenseGate.dispose();
+        this.lastUpdateOptions = null;
+        d3.select(this.target).on(".timeBreakdown", null);
+        this.selectionManager.registerOnSelectCallback(() => {});
         this.cornerSignature?.destroy();
         this.cornerSignature = null;
-        this.container?.selectAll("*").remove();
+        this.container?.selectAll("*").on(".timeBreakdown", null).remove();
         this.svg?.remove();
+        this.scrollContainer?.remove();
+        this.lastTotalByCategory.clear();
+        this.rowSelectionIds = [];
+        this.categoricalCategories = undefined;
+        this.categoryColorHelper = this.totalColorHelper = null;
+        this.segmentColorHelpers = [];
         this.container = null;
         this.svg = null;
+        this.scrollContainer = null;
+        this.backgroundRect = this.borderRect = null;
+        this.titleEl = null;
     }
 }
