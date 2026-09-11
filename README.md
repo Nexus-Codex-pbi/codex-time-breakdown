@@ -77,8 +77,10 @@ The visual provides the following format pane cards:
    - Hover to see a tooltip with category, segment values, and total
 
 ## Limitations
-- The visual expects numeric values for segment measures and total. Non-numeric values are treated as zero.
-- If no segment measures are bound, the visual displays an empty state.
+- The visual expects numeric values for segment measures and total. A blank or non-numeric reading is treated as **absent, not as zero** — it draws no segment, and a row with no readable duration shows `—` in place of a total instead of an asserted `0`.
+- A negative duration cannot be drawn as a length: the segment is not drawn, and that row's derived total is reported as `—` rather than silently summing the remaining segments. Bind an explicit Total measure to state the total yourself.
+- Values are displayed with the precision their own model format string allows (a measure formatted `0.00` keeps its decimals; whole numbers stay whole). The Value Unit suffix is a separate manual string.
+- If no segment measures are bound, rows still render from the Category and Total fields with no bars. The visual shows its empty state when no category field is bound, or when the dataset has no rows.
 - The sort order field, if bound, must be numeric and determines ascending row order.
 - Each data role accepts only one field.
 - The visual uses a scrollbar when the total content height exceeds the container height.

@@ -53,6 +53,13 @@ function themeFor(hex: string, visible: boolean): Theme {
 }
 
 /**
+ * Shown wherever the data provides no duration to report (NEXUS cycle-13 §3).
+ * An absent reading is a gap, never a measured zero — an all-blank row and an
+ * observed all-zero row must not print the same "0 min".
+ */
+const NO_VALUE = "—";
+
+/**
  * roundedRectPath(x, y, w, h, rTL, rTR, rBR, rBL): a rounded-rect SVG
  * path with an independent radius per corner — SVG's native `rect`
  * only supports one uniform rx/ry, but the LED-gap segment run (§5)
@@ -460,9 +467,14 @@ export class Visual implements IVisual {
         const margin = { top: 8 + titleH, right: showDelta ? 120 : 60, bottom: 30, left: hasYTitle ? 30 : 12 };
         const trackWidth = width - margin.left - margin.right;
         const maxTotal = data.maxTotal || 1;
-        const baselineTotal = data.rows[0]
-            ? (data.rows[0].total ?? data.rows[0].segments.reduce((sum, seg) => sum + seg.value, 0))
-            : 0;
+        // §3: the baseline row's own total, which may not exist at all — a row
+        // with no duration reading has no total to be a reference for, and
+        // re-summing its (empty) segments here would reintroduce the asserted
+        // zero the parser now refuses to invent.
+        const baselineTotal: number | null = data.rows[0]
+            ? (data.rows[0].total ?? data.rows[0].derivedTotal)
+            : null;
+        const hasBaseline = baselineTotal !== null && baselineTotal > 0;
 
         if (showTitle) {
             const tAlign = textAlignFor(String((titleFmt as any).titleAlign?.value || "left"));
@@ -662,8 +674,13 @@ export class Visual implements IVisual {
             // capped at MOTION_MAX_MS and skipped under
             // prefers-reduced-motion internally.
             if (s.showTotalLabel.value) {
-                const totalVal = row.total ?? row.segments.reduce((sum, seg) => sum + seg.value, 0);
-                const totalText = `${Math.round(totalVal)} ${unit}`;
+                // §3: an explicit total wins; otherwise the row's own derived
+                // total, which is null when the row has no assertable duration
+                // (all blank, no measures bound, or a rejected negative reading)
+                // — that renders the no-value dash, never "0 min".
+                const totalVal = row.total ?? row.derivedTotal;
+                const hasTotal = totalVal !== null && Number.isFinite(totalVal);
+                const totalText = hasTotal ? `${Math.round(totalVal)} ${unit}` : NO_VALUE;
                 const totalEl = rowG.append("text")
                     .attr("x", xPos + 8)
                     .attr("y", barY + barHeight / 2)
@@ -688,12 +705,15 @@ export class Visual implements IVisual {
                 // Δ delta chip (board Total · Δ): pill after the total showing
                 // % vs the first row (baseline). rect appended before text so
                 // it sits under it; both sized after measuring the label.
-                if (showDelta) {
+                // §3: a row with no total of its own is not a baseline and has
+                // no percentage to report — it gets no chip rather than a
+                // fabricated "baseline"/"0%" against a value that was never read.
+                if (showDelta && hasTotal) {
                     const totalW = (totalEl.node() as SVGTextElement).getBBox().width;
                     const chipX = (xPos + 8) + totalW + 6;
                     const chipH = 16, chipPadX = 6;
                     let chipStr: string, chipInk: string, chipFill: string;
-                    if (rowIndex === 0 || !(baselineTotal > 0)) {
+                    if (rowIndex === 0 || !hasBaseline) {
                         chipStr = "baseline";
                         const grey = surfaceTokens(theme).muted;
                         chipInk = this.isHighContrast ? this.highContrastForeground : grey;
@@ -741,8 +761,15 @@ export class Visual implements IVisual {
                     value: `${Math.round(seg.value)}${unit}`
                 });
             });
-            const totalVal = row.total ?? row.segments.reduce((sum, seg) => sum + seg.value, 0);
-            tooltipItems.push({ displayName: "Total", value: `${Math.round(totalVal)}${unit}` });
+            // Same total contract as the rendered label above (§3): the tooltip
+            // must not report a total the row never had.
+            const tooltipTotal = row.total ?? row.derivedTotal;
+            tooltipItems.push({
+                displayName: "Total",
+                value: tooltipTotal !== null && Number.isFinite(tooltipTotal)
+                    ? `${Math.round(tooltipTotal)}${unit}`
+                    : NO_VALUE
+            });
 
             const hitNode = hitRect.node() as SVGRectElement;
             hitNode.addEventListener("mousemove", (e: MouseEvent) => {
