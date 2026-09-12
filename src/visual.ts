@@ -35,6 +35,7 @@ import { applyCardSignature } from "./shared/cardSignatureSettings";
 import { resolveBorder } from "./shared/borderSettings";
 import { settle, MOTION_MAX_MS } from "./shared/motion";
 import { applyHighContrast } from "./shared/highContrast";
+import { ResolvedCodexTheme, resolveCodexTheme, neonColorFor, neonFilter } from "./shared/codexThemeSettings";
 
 import * as d3 from "d3";
 import { LicenseGate } from "./shared/licensing";
@@ -87,6 +88,26 @@ export class Visual implements IVisual {
     private highContrastForeground: string = "";
     private highContrastBackground: string = "";
     private surfaceHex: string = "#ffffff";
+
+    // ─── Nexus Codex Theme (#819) ──────────────────────────────────────
+    // Resolved ONCE per update() and routed from there into render() /
+    // renderEmpty() — this visual must never resolve the card twice, or a
+    // row could paint against a surface the card no longer describes.
+    // Auto reproduces the shipped derivation exactly (surfaceTone of the
+    // composited Background fill); Dark/Light/Neon own the surface, and
+    // with it every ink this visual adapts to that surface.
+    private codex: ResolvedCodexTheme = resolveCodexTheme(undefined, {
+        hcActive: false, autoTheme: "light", autoBgHex: "#ffffff",
+        autoTransparencyPct: 100, behindHex: "#ffffff",
+    });
+
+    /** A forced mode (Dark/Light/Neon) owns the TEXT inks against its own
+     *  surface: a swatch the author picked for a white card is not a choice
+     *  about the Codex dark surface. Accent, band, segment and fx-rule
+     *  colours stay the author's. Auto keeps every pane ink untouched. */
+    private get inkOverride(): boolean {
+        return this.codex.mode !== "auto";
+    }
 
     // State for tooltips and cross-filtering
     private rowSelectionIds: ISelectionId[] = [];
@@ -227,17 +248,37 @@ export class Visual implements IVisual {
             const bgSettingsForTheme = this.formattingSettings.background;
             const bgHexForTheme = bgSettingsForTheme.backgroundColor.value?.value ?? "#ffffff";
             const bgTransparencyForTheme = bgSettingsForTheme.transparency.value ?? 100;
+            const behindHex = colorPalette.background?.value ?? "#ffffff";
             this.surfaceHex = this.isHighContrast ? this.highContrastBackground
-                : compositeOver(bgHexForTheme, bgTransparencyForTheme, colorPalette.background?.value ?? "#ffffff");
-            const theme: Theme = surfaceTone(this.surfaceHex);
+                : compositeOver(bgHexForTheme, bgTransparencyForTheme, behindHex);
+            const autoTheme: Theme = surfaceTone(this.surfaceHex);
+            // ─── Nexus Codex Theme (#819): ONE switch above the automatic
+            // pick. Auto returns exactly the values derived above (zero
+            // pixel change); Dark/Light/Neon paint the Codex surface at the
+            // card's own Surface Transparency and force the token set. HC
+            // has already collapsed to Auto inside the resolver, so this
+            // file adds no high-contrast branch of its own.
+            this.codex = resolveCodexTheme(this.formattingSettings.codexTheme, {
+                hcActive: this.isHighContrast,
+                autoTheme,
+                autoBgHex: bgHexForTheme,
+                autoTransparencyPct: bgTransparencyForTheme,
+                behindHex,
+            });
+            const theme: Theme = this.codex.theme;
+            // Every ink in this visual adapts against this.surfaceHex, so
+            // re-pointing it at the Codex surface is what makes the forced
+            // modes legible — the per-site inkOverride clauses below only
+            // handle the swatches that today adapt ONLY at their default.
+            if (this.inkOverride) this.surfaceHex = this.codex.surfaceHex;
             const hc = applyHighContrast(colorPalette, { fallbackColor: accentToken(theme) });
 
             applyCardSignature(this.cornerSignature, this.formattingSettings.cardSignature, {
-                autoHex: accentToken(theme),
+                autoHex: neonColorFor(accentToken(theme), this.codex),
                 hcActive: hc.active,
                 hcColor: hc.color,
                 mirror: true,
-                glowMix: hc.active ? 0 : (theme === "dark" ? 55 : 0),
+                glowMix: hc.active ? 0 : this.codex.neon ? this.codex.glow : (theme === "dark" ? 55 : 0),
                 muted: false,
             });
 
@@ -329,13 +370,15 @@ export class Visual implements IVisual {
             // report (this property never previously existed) renders
             // alpha 0 — pixel-identical to painting nothing (D-06) — while
             // still exposing a real, working Colour + Transparency control.
-            const background = this.formattingSettings.background;
-            const bgHex = background.backgroundColor.value?.value ?? "#ffffff";
-            const bgTransparencyPct = background.transparency.value ?? 100;
+            // Nexus Codex Theme (#819): a forced mode paints the Codex
+            // surface token at the CARD's own Surface Transparency instead
+            // of the author's Background fill; Auto is byte-identical to the
+            // shipped behaviour (the resolver echoes the fill back).
             this.backgroundRect
                 .attr("width", w)
                 .attr("height", fillH)
-                .attr("fill", this.isHighContrast ? this.highContrastBackground : toRgba(bgHex, bgTransparencyPct));
+                .attr("fill", this.isHighContrast ? this.highContrastBackground
+                    : toRgba(this.codex.bgHex, this.codex.transparencyPct));
 
             // Visual's own Border card — stroke-rect framing the visual; inset
             // by half the width so the stroke isn't clipped at the tile edge.
@@ -390,10 +433,12 @@ export class Visual implements IVisual {
         this.borderRect.style("display", "none");
         this.scrollContainer.style("width", w + "px").style("height", h + "px");
         this.svg.attr("width", w).attr("height", h);
-        const background = this.formattingSettings.background;
+        // Same Codex surface as the populated render (#819) — the empty
+        // state must not fall back to the author's Background fill while a
+        // forced mode is on, or "No data" paints on the wrong surface.
         this.backgroundRect.attr("width", w).attr("height", h)
             .attr("fill", this.isHighContrast ? this.highContrastBackground
-                : toRgba(background.backgroundColor.value.value, background.transparency.value));
+                : toRgba(this.codex.bgHex, this.codex.transparencyPct));
         if (w >= 50 && h >= 16) {
             this.container.append("text").attr("class", "time-breakdown-empty")
                 .attr("x", w / 2).attr("y", Math.min(24, h / 2)).attr("dy", "0.35em")
@@ -557,8 +602,14 @@ export class Visual implements IVisual {
             const anchor = tAlign === "center" ? "middle" : tAlign === "right" ? "end" : "start";
             // Adaptive default (D-16 sentinel): untouched shared-Title navy
             // swaps to the dark text token on dark surfaces.
+            // #819: adapt when FORCED or at the default. Under a forced mode
+            // the adaptation is always measured against the shared Title
+            // default ink, never against the author's own swatch — feeding a
+            // white swatch back in as the "dark ink" candidate would leave
+            // the title invisible on the Codex light surface.
             const setTitle = titleFmt.titleColor.value.value;
-            const adaptiveTitle = setTitle === "#1a1a2e" ? this.adaptiveInk(setTitle) : setTitle;
+            const adaptiveTitle = (this.inkOverride || setTitle === "#1a1a2e")
+                ? this.adaptiveInk("#1a1a2e") : setTitle;
             this.titleEl
                 .attr("x", x)
                 .attr("y", titleFontSize + 4)
@@ -583,7 +634,8 @@ export class Visual implements IVisual {
         // Shared flat category-label colour for the legend + axis titles
         // (D-16 sweep: the untouched dark-navy default is invisible on dark
         // surfaces, so swap to the light text token there).
-        const catFlatColor = s.categoryColor.value.value === "#130064"
+        // #819: adapt when FORCED or at the default (legend labels + axis titles).
+        const catFlatColor = (this.inkOverride || s.categoryColor.value.value === "#130064")
             ? this.adaptiveInk() : s.categoryColor.value.value;
 
         let yOffset = margin.top;
@@ -658,13 +710,26 @@ export class Visual implements IVisual {
             // D-16 adaptive: the untouched dark-navy default swaps to the light
             // text token on dark surfaces (total value was invisible on dark —
             // Neil sweep pattern); user-set / fx honoured.
-            if (resolvedTotalColor === "#130064") resolvedTotalColor = this.adaptiveInk();
+            // #819: a forced mode owns this ink when it is the card-level
+            // swatch — but a per-row fx RULE result is data, not a pane ink
+            // ("the author's fx colours stay the author's"), and a resolved
+            // colour that differs from the static swatch can only have come
+            // from a rule or a per-instance override.
+            const totalIsFx = resolvedTotalColor !== totalColorDefault;
+            if ((this.inkOverride && !totalIsFx) || resolvedTotalColor === "#130064") {
+                resolvedTotalColor = this.adaptiveInk();
+            }
             const totalColor = this.isHighContrast ? this.highContrastForeground : resolvedTotalColor;
 
             // Per-row Category Label Colour resolution (TEXT-02 fx): same
             // pattern as Total Colour above.
             let resolvedCategoryColor = this.categoryColorHelper?.getColorForMeasure(instanceObjects, "categoryColor") ?? s.categoryColor.value.value;
-            if (resolvedCategoryColor === "#130064") resolvedCategoryColor = this.adaptiveInk();
+            // #819: same split as the total ink above — forced mode owns the
+            // card-level swatch, an fx-rule result stays the author's.
+            const categoryIsFx = resolvedCategoryColor !== s.categoryColor.value.value;
+            if ((this.inkOverride && !categoryIsFx) || resolvedCategoryColor === "#130064") {
+                resolvedCategoryColor = this.adaptiveInk();
+            }
             const catColor = this.isHighContrast ? this.highContrastForeground : resolvedCategoryColor;
 
             // Category label
@@ -694,6 +759,22 @@ export class Visual implements IVisual {
             // true outer ends of the whole run (this row's first
             // segment's left corners, last segment's right corners) and
             // a smaller LED radius on every inner-adjacent edge (§5).
+            // ─── Neon flare (#819) ─────────────────────────────────────
+            // The stacked bar is this visual's PRIMARY data mark, so that is
+            // where the glow goes. Scope "flare" lights the whole run in one
+            // colour, so ONE neonFilter on the segments' own <g> draws a
+            // clean halo around the bar with no bleed between neighbouring
+            // segments; scope "all" lights each segment in its own hue,
+            // which can only be a per-path filter. Never under high contrast
+            // — the resolver already collapsed to Auto (glow 0) there.
+            // The <g> is appended BEFORE the in-segment callouts so the
+            // callout text still paints above every segment path.
+            const segmentsG = rowG.append("g");
+            const perSegmentGlow = this.codex.neon && this.codex.neonScope === "all";
+            if (this.codex.neon && !perSegmentGlow) {
+                segmentsG.style("filter", neonFilter(this.codex.neonColor, this.codex.glow));
+            }
+
             row.segments.forEach((seg, segIdx) => {
                 const segW = (seg.value / maxTotal) * trackWidth;
                 const baseConfig = segmentConfigs[seg.roleIndex] || segmentConfigs[0];
@@ -714,10 +795,11 @@ export class Visual implements IVisual {
                 const renderedW = isLast ? Math.max(0, segW) : Math.max(0, segW - ledGap);
 
                 // Segment path (rounded-rect with per-corner radius)
-                rowG.append("path")
+                segmentsG.append("path")
                     .attr("d", roundedRectPath(xPos, barY, renderedW, barHeight, rLeft, rRight, rRight, rLeft))
                     .attr("fill", cfg.color)
-                    .attr("opacity", opacity);
+                    .attr("opacity", opacity)
+                    .style("filter", perSegmentGlow ? neonFilter(cfg.color, this.codex.glow) : null);
 
                 // Segment label + value text — suppressed first in the
                 // degradation ladder (§7) even when the tile has room for
@@ -776,6 +858,13 @@ export class Visual implements IVisual {
                     .style("text-decoration", totalDecoration)
                     .style("font-feature-settings", TABULAR_NUMS)
                     .attr("fill", totalColor)
+                    // Neon (#819): the total readout is this visual's
+                    // headline number — it flares in its own ink, or in the
+                    // flare colour when the card is scoped to "flare". The
+                    // Δ chip, legend keys and axis ticks stay unglowed:
+                    // all are smaller than the headline.
+                    .style("filter", this.codex.neon
+                        ? neonFilter(neonColorFor(totalColor, this.codex), this.codex.glow) : null)
                     .text(totalText);
                 this.fitText(totalEl.node(), Math.max(0, rowWidth - totalX));
 
@@ -1062,6 +1151,7 @@ export class Visual implements IVisual {
     }
 
     public getFormattingModel(): powerbi.visuals.FormattingModel {
+        this.formattingSettings.codexTheme.reveal();
         return this.formattingSettingsService.buildFormattingModel(this.formattingSettings);
     }
 
