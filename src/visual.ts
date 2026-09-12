@@ -35,7 +35,7 @@ import { applyCardSignature } from "./shared/cardSignatureSettings";
 import { resolveBorder } from "./shared/borderSettings";
 import { settle, MOTION_MAX_MS } from "./shared/motion";
 import { applyHighContrast } from "./shared/highContrast";
-import { ResolvedCodexTheme, resolveCodexTheme, neonColorFor, neonFilter, flareHexFor, forcedInk } from "./shared/codexThemeSettings";
+import { ResolvedCodexTheme, resolveCodexTheme, neonColorFor, neonFilter, flareHexFor, forcedInk, isFxResolved } from "./shared/codexThemeSettings";
 
 import * as d3 from "d3";
 import { LicenseGate } from "./shared/licensing";
@@ -723,7 +723,11 @@ export class Visual implements IVisual {
             // the author's"), and a resolved colour that differs from the static
             // swatch can only have come from a rule or a per-instance override,
             // so it is exempt from the forced-mode override entirely.
-            const totalIsFx = resolvedTotalColor !== totalColorDefault;
+            // #819 pass 2: that test is now the ONE suite-wide `isFxResolved`
+            // (shared), not a local `!==` — which also makes it hex-case
+            // insensitive, so a rule echoing the pane swatch in upper case is
+            // correctly read as a pane ink rather than as data.
+            const totalIsFx = isFxResolved(resolvedTotalColor, totalColorDefault);
             if (!this.inkOverride || !totalIsFx) {
                 resolvedTotalColor = forcedInk(resolvedTotalColor, this.adaptiveInk(), this.codex,
                     resolvedTotalColor === "#130064");
@@ -735,7 +739,8 @@ export class Visual implements IVisual {
             let resolvedCategoryColor = this.categoryColorHelper?.getColorForMeasure(instanceObjects, "categoryColor") ?? s.categoryColor.value.value;
             // #819 rule 3: same split as the total ink above — forced mode
             // guards the card-level swatch, an fx-rule result stays the author's.
-            const categoryIsFx = resolvedCategoryColor !== s.categoryColor.value.value;
+            // #819 pass 2: same shared `isFxResolved` test as the total ink.
+            const categoryIsFx = isFxResolved(resolvedCategoryColor, s.categoryColor.value.value);
             if (!this.inkOverride || !categoryIsFx) {
                 resolvedCategoryColor = forcedInk(resolvedCategoryColor, this.adaptiveInk(), this.codex,
                     resolvedCategoryColor === "#130064");
