@@ -35,7 +35,7 @@ import { applyCardSignature } from "./shared/cardSignatureSettings";
 import { resolveBorder } from "./shared/borderSettings";
 import { settle, MOTION_MAX_MS } from "./shared/motion";
 import { applyHighContrast } from "./shared/highContrast";
-import { ResolvedCodexTheme, resolveCodexTheme, neonColorFor, neonFilter } from "./shared/codexThemeSettings";
+import { ResolvedCodexTheme, resolveCodexTheme, neonColorFor, neonFilter, flareHexFor } from "./shared/codexThemeSettings";
 
 import * as d3 from "d3";
 import { LicenseGate } from "./shared/licensing";
@@ -197,6 +197,7 @@ export class Visual implements IVisual {
         );
         applyCardSignature(this.cornerSignature, undefined, {
             autoHex: initialHc.color, hcActive: initialHc.active, hcColor: initialHc.color, mirror: true,
+            flareHex: flareHexFor(this.codex),
         });
 
         // Context menu
@@ -275,6 +276,7 @@ export class Visual implements IVisual {
 
             applyCardSignature(this.cornerSignature, this.formattingSettings.cardSignature, {
                 autoHex: neonColorFor(accentToken(theme), this.codex),
+                flareHex: flareHexFor(this.codex),
                 hcActive: hc.active,
                 hcColor: hc.color,
                 mirror: true,
@@ -448,6 +450,7 @@ export class Visual implements IVisual {
         }
         applyCardSignature(this.cornerSignature, this.formattingSettings.cardSignature, {
             autoHex: accentToken(theme), hcActive: hc.active, hcColor: hc.color, mirror: true, muted: true,
+            flareHex: flareHexFor(this.codex),
         });
     }
 
