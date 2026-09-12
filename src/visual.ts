@@ -35,7 +35,7 @@ import { applyCardSignature } from "./shared/cardSignatureSettings";
 import { resolveBorder } from "./shared/borderSettings";
 import { settle, MOTION_MAX_MS } from "./shared/motion";
 import { applyHighContrast } from "./shared/highContrast";
-import { ResolvedCodexTheme, resolveCodexTheme, neonColorFor, neonFilter, flareHexFor } from "./shared/codexThemeSettings";
+import { ResolvedCodexTheme, resolveCodexTheme, neonColorFor, neonFilter, flareHexFor, forcedInk } from "./shared/codexThemeSettings";
 
 import * as d3 from "d3";
 import { LicenseGate } from "./shared/licensing";
@@ -605,14 +605,15 @@ export class Visual implements IVisual {
             const anchor = tAlign === "center" ? "middle" : tAlign === "right" ? "end" : "start";
             // Adaptive default (D-16 sentinel): untouched shared-Title navy
             // swaps to the dark text token on dark surfaces.
-            // #819: adapt when FORCED or at the default. Under a forced mode
-            // the adaptation is always measured against the shared Title
-            // default ink, never against the author's own swatch — feeding a
-            // white swatch back in as the "dark ink" candidate would leave
-            // the title invisible on the Codex light surface.
+            // #819 rule 3: guarded, not replaced. A forced mode takes the
+            // mode default when the swatch is untouched, and KEEPS the
+            // author's explicit ink whenever it still reads ≥ 4.5:1 on the
+            // Codex surface. The mode default is always measured against the
+            // shared Title default ink, never against the author's own swatch
+            // — feeding a white swatch back in as the "dark ink" candidate
+            // would leave the title invisible on the Codex light surface.
             const setTitle = titleFmt.titleColor.value.value;
-            const adaptiveTitle = (this.inkOverride || setTitle === "#1a1a2e")
-                ? this.adaptiveInk("#1a1a2e") : setTitle;
+            const adaptiveTitle = forcedInk(setTitle, this.adaptiveInk("#1a1a2e"), this.codex, setTitle === "#1a1a2e");
             this.titleEl
                 .attr("x", x)
                 .attr("y", titleFontSize + 4)
@@ -637,9 +638,11 @@ export class Visual implements IVisual {
         // Shared flat category-label colour for the legend + axis titles
         // (D-16 sweep: the untouched dark-navy default is invisible on dark
         // surfaces, so swap to the light text token there).
-        // #819: adapt when FORCED or at the default (legend labels + axis titles).
-        const catFlatColor = (this.inkOverride || s.categoryColor.value.value === "#130064")
-            ? this.adaptiveInk() : s.categoryColor.value.value;
+        // #819 rule 3: the mode default at the untouched sentinel, the author's
+        // own ink under a forced mode whenever it still reads on the Codex
+        // surface (legend labels + axis titles).
+        const catFlatColor = forcedInk(s.categoryColor.value.value, this.adaptiveInk(), this.codex,
+            s.categoryColor.value.value === "#130064");
 
         let yOffset = margin.top;
 
@@ -713,25 +716,29 @@ export class Visual implements IVisual {
             // D-16 adaptive: the untouched dark-navy default swaps to the light
             // text token on dark surfaces (total value was invisible on dark —
             // Neil sweep pattern); user-set / fx honoured.
-            // #819: a forced mode owns this ink when it is the card-level
-            // swatch — but a per-row fx RULE result is data, not a pane ink
-            // ("the author's fx colours stay the author's"), and a resolved
-            // colour that differs from the static swatch can only have come
-            // from a rule or a per-instance override.
+            // #819 rule 3: a forced mode GUARDS this ink when it is the
+            // card-level swatch (mode default at the sentinel, the author's own
+            // ink while it still reads on the Codex surface) — but a per-row fx
+            // RULE result is data, not a pane ink ("the author's fx colours stay
+            // the author's"), and a resolved colour that differs from the static
+            // swatch can only have come from a rule or a per-instance override,
+            // so it is exempt from the forced-mode override entirely.
             const totalIsFx = resolvedTotalColor !== totalColorDefault;
-            if ((this.inkOverride && !totalIsFx) || resolvedTotalColor === "#130064") {
-                resolvedTotalColor = this.adaptiveInk();
+            if (!this.inkOverride || !totalIsFx) {
+                resolvedTotalColor = forcedInk(resolvedTotalColor, this.adaptiveInk(), this.codex,
+                    resolvedTotalColor === "#130064");
             }
             const totalColor = this.isHighContrast ? this.highContrastForeground : resolvedTotalColor;
 
             // Per-row Category Label Colour resolution (TEXT-02 fx): same
             // pattern as Total Colour above.
             let resolvedCategoryColor = this.categoryColorHelper?.getColorForMeasure(instanceObjects, "categoryColor") ?? s.categoryColor.value.value;
-            // #819: same split as the total ink above — forced mode owns the
-            // card-level swatch, an fx-rule result stays the author's.
+            // #819 rule 3: same split as the total ink above — forced mode
+            // guards the card-level swatch, an fx-rule result stays the author's.
             const categoryIsFx = resolvedCategoryColor !== s.categoryColor.value.value;
-            if ((this.inkOverride && !categoryIsFx) || resolvedCategoryColor === "#130064") {
-                resolvedCategoryColor = this.adaptiveInk();
+            if (!this.inkOverride || !categoryIsFx) {
+                resolvedCategoryColor = forcedInk(resolvedCategoryColor, this.adaptiveInk(), this.codex,
+                    resolvedCategoryColor === "#130064");
             }
             const catColor = this.isHighContrast ? this.highContrastForeground : resolvedCategoryColor;
 
@@ -762,21 +769,17 @@ export class Visual implements IVisual {
             // true outer ends of the whole run (this row's first
             // segment's left corners, last segment's right corners) and
             // a smaller LED radius on every inner-adjacent edge (§5).
-            // ─── Neon flare (#819) ─────────────────────────────────────
+            // ─── Neon flare (#819 rule 1) ──────────────────────────────
             // The stacked bar is this visual's PRIMARY data mark, so that is
-            // where the glow goes. Scope "flare" lights the whole run in one
-            // colour, so ONE neonFilter on the segments' own <g> draws a
-            // clean halo around the bar with no bleed between neighbouring
-            // segments; scope "all" lights each segment in its own hue,
-            // which can only be a per-path filter. Never under high contrast
-            // — the resolver already collapsed to Auto (glow 0) there.
+            // where the glow goes — but a segment's colour is DATA: which
+            // band of time this is. It is never tinted by the flare, in
+            // EITHER scope; each segment glows in its own hue (a dead-time
+            // segment glows grey), so the halo reads the same run of
+            // categories the fills do. Never under high contrast — the
+            // resolver already collapsed to Auto (glow 0) there.
             // The <g> is appended BEFORE the in-segment callouts so the
             // callout text still paints above every segment path.
             const segmentsG = rowG.append("g");
-            const perSegmentGlow = this.codex.neon && this.codex.neonScope === "all";
-            if (this.codex.neon && !perSegmentGlow) {
-                segmentsG.style("filter", neonFilter(this.codex.neonColor, this.codex.glow));
-            }
 
             row.segments.forEach((seg, segIdx) => {
                 const segW = (seg.value / maxTotal) * trackWidth;
@@ -802,7 +805,7 @@ export class Visual implements IVisual {
                     .attr("d", roundedRectPath(xPos, barY, renderedW, barHeight, rLeft, rRight, rRight, rLeft))
                     .attr("fill", cfg.color)
                     .attr("opacity", opacity)
-                    .style("filter", perSegmentGlow ? neonFilter(cfg.color, this.codex.glow) : null);
+                    .style("filter", this.codex.neon ? neonFilter(cfg.color, this.codex.glow) : null);
 
                 // Segment label + value text — suppressed first in the
                 // degradation ladder (§7) even when the tile has room for
@@ -861,13 +864,15 @@ export class Visual implements IVisual {
                     .style("text-decoration", totalDecoration)
                     .style("font-feature-settings", TABULAR_NUMS)
                     .attr("fill", totalColor)
-                    // Neon (#819): the total readout is this visual's
-                    // headline number — it flares in its own ink, or in the
-                    // flare colour when the card is scoped to "flare". The
-                    // Δ chip, legend keys and axis ticks stay unglowed:
-                    // all are smaller than the headline.
+                    // Neon (#819 rule 1): the total readout is this visual's
+                    // headline — an ACCENT, so it flares in the flare colour
+                    // when the card is scoped to "flare". The one exception is
+                    // an fx-resolved total: that hue MEANS something (the rule
+                    // the author wrote), so it is data and glows in its own
+                    // hue. The Δ chip, legend keys and axis ticks stay
+                    // unglowed: all are smaller than the headline.
                     .style("filter", this.codex.neon
-                        ? neonFilter(neonColorFor(totalColor, this.codex), this.codex.glow) : null)
+                        ? neonFilter(totalIsFx ? totalColor : neonColorFor(totalColor, this.codex), this.codex.glow) : null)
                     .text(totalText);
                 this.fitText(totalEl.node(), Math.max(0, rowWidth - totalX));
 
