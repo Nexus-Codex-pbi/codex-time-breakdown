@@ -27,13 +27,13 @@
     {
       "name": "totalValue",
       "displayName": "Total",
-      "description": "Total time measure \u2014 shown as end label",
+      "description": "Total time measure — shown as end label",
       "kind": "Measure"
     },
     {
       "name": "sortOrder",
       "displayName": "Sort Order",
-      "description": "Numeric sort order \u2014 rows sorted ascending by this value",
+      "description": "Numeric sort order — rows sorted ascending by this value",
       "kind": "Measure"
     }
   ],
@@ -490,6 +490,12 @@
           "displayName": "Surface Transparency",
           "type": {
             "numeric": true
+          }
+        },
+        "neon": {
+          "displayName": "Neon Glow",
+          "type": {
+            "bool": true
           }
         },
         "neonColor": {
