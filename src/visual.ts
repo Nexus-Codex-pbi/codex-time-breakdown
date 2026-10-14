@@ -221,7 +221,7 @@ export class Visual implements IVisual {
         this.events.renderingStarted(options);
         this.lastUpdateOptions = options;
 
-        if (this.licenseGate.blockedThisFrame()) {
+        if (this.licenseGate.blockedThisFrame(options.dataViews)) {
             this.target.style.display = "none";
             this.events.renderingFinished(options);
             return;
